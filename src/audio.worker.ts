@@ -1,0 +1,204 @@
+type Engine = {
+  device: "webgpu" | "wasm";
+  dtype: "fp32" | "q8";
+  label: "gpu" | "cpu";
+};
+
+type GeneratedAudio = {
+  audio: Float32Array;
+  sampling_rate: number;
+};
+
+type DialogueLine = {
+  text: string;
+  voice: string;
+  speed: number;
+};
+
+type WorkerRequest = {
+  id: number;
+  type: "warmup" | "preview" | "dialogue" | "encode";
+  text?: string;
+  voice?: string;
+  speed?: number;
+  lines?: DialogueLine[];
+  pauseMs?: number;
+  buffer?: ArrayBuffer;
+  sampleRate?: number;
+};
+
+type WorkerScope = {
+  navigator: Navigator;
+  postMessage: (message: unknown, transfer?: Transferable[]) => void;
+  addEventListener: (type: "message", listener: (event: MessageEvent<WorkerRequest>) => void) => void;
+};
+
+const workerScope = globalThis as unknown as WorkerScope;
+let modelPromise: Promise<any> | null = null;
+let activeEngine: Engine | null = null;
+
+function postStatus(message: string, engine?: Engine["label"]) {
+  workerScope.postMessage({ type: "status", message, engine });
+}
+
+async function chooseEngine(): Promise<Engine> {
+  const navigatorWithHardware = workerScope.navigator as Navigator & {
+    deviceMemory?: number;
+    gpu?: { requestAdapter: (options?: { powerPreference?: string }) => Promise<unknown> };
+    connection?: { effectiveType?: string; saveData?: boolean };
+  };
+  const connection = navigatorWithHardware.connection;
+  const slowConnection = connection?.saveData || ["slow-2g", "2g"].includes(connection?.effectiveType ?? "");
+  const desktopMemory = (navigatorWithHardware.deviceMemory ?? 0) >= 8;
+
+  if (navigatorWithHardware.gpu && desktopMemory && !slowConnection) {
+    try {
+      const adapter = await navigatorWithHardware.gpu.requestAdapter({ powerPreference: "high-performance" });
+      if (adapter) return { device: "webgpu", dtype: "fp32", label: "gpu" };
+    } catch {
+      // The WASM engine below is the compatibility path.
+    }
+  }
+  return { device: "wasm", dtype: "q8", label: "cpu" };
+}
+
+async function loadModel() {
+  const { KokoroTTS } = await import("kokoro-js");
+  const preferred = await chooseEngine();
+
+  async function load(engine: Engine) {
+    postStatus(`${engine.label === "gpu" ? "GPU" : "CPU"} voice engine loading…`, engine.label);
+    const model = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
+      dtype: engine.dtype,
+      device: engine.device,
+      progress_callback: (progress: { status?: string; progress?: number }) => {
+        if (progress.status === "progress" && Number.isFinite(progress.progress)) {
+          postStatus(`Voice engine loading… ${Math.round(progress.progress ?? 0)}%`, engine.label);
+        }
+      }
+    });
+    activeEngine = engine;
+    postStatus(`Voice engine ready · ${engine.label.toUpperCase()}`, engine.label);
+    return model;
+  }
+
+  try {
+    return await load(preferred);
+  } catch (error) {
+    if (preferred.device === "webgpu") {
+      postStatus("GPU unavailable · switching to CPU", "cpu");
+      return load({ device: "wasm", dtype: "q8", label: "cpu" });
+    }
+    throw error;
+  }
+}
+
+function getModel() {
+  if (!modelPromise) {
+    modelPromise = loadModel().catch((error) => {
+      modelPromise = null;
+      throw error;
+    });
+  }
+  return modelPromise;
+}
+
+function joinClips(clips: GeneratedAudio[], pauseMs: number, sampleRate: number) {
+  const pauseLength = Math.round(sampleRate * pauseMs / 1000);
+  const totalLength = clips.reduce((sum, clip) => sum + clip.audio.length, 0) + pauseLength * (clips.length - 1);
+  const output = new Float32Array(totalLength);
+  let offset = 0;
+  clips.forEach((clip, index) => {
+    output.set(clip.audio, offset);
+    offset += clip.audio.length;
+    if (index < clips.length - 1) offset += pauseLength;
+  });
+  return output;
+}
+
+async function encodeMp3(samples: Float32Array, sampleRate: number) {
+  const lame = await import("@breezystack/lamejs");
+  const encoder = new lame.Mp3Encoder(1, sampleRate, 96);
+  const pcm = new Int16Array(samples.length);
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index]));
+    pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+  for (let offset = 0; offset < pcm.length; offset += 1152) {
+    const chunk = encoder.encodeBuffer(pcm.subarray(offset, offset + 1152));
+    if (chunk.length) {
+      const bytes = new Uint8Array(chunk);
+      chunks.push(bytes);
+      totalLength += bytes.length;
+    }
+  }
+  const end = new Uint8Array(encoder.flush());
+  if (end.length) {
+    chunks.push(end);
+    totalLength += end.length;
+  }
+
+  const output = new Uint8Array(totalLength);
+  let outputOffset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, outputOffset);
+    outputOffset += chunk.length;
+  }
+  return output;
+}
+
+workerScope.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
+  void (async () => {
+    const request = event.data;
+    try {
+      if (request.type === "warmup") {
+        await getModel();
+        workerScope.postMessage({ type: "complete", id: request.id });
+        return;
+      }
+
+      if (request.type === "preview") {
+        const model = await getModel();
+        postStatus("Generating preview…", activeEngine?.label);
+        const generated = await model.generate(request.text, {
+          voice: request.voice,
+          speed: request.speed
+        }) as GeneratedAudio;
+        const output = generated.audio.slice();
+        const buffer = output.buffer as ArrayBuffer;
+        workerScope.postMessage({ type: "complete", id: request.id, buffer, sampleRate: generated.sampling_rate }, [buffer]);
+        return;
+      }
+
+      if (request.type === "dialogue") {
+        const model = await getModel();
+        const lines = request.lines ?? [];
+        const clips: GeneratedAudio[] = [];
+        for (let index = 0; index < lines.length; index += 1) {
+          const line = lines[index];
+          postStatus(`Generating ${index + 1} / ${lines.length}…`, activeEngine?.label);
+          clips.push(await model.generate(line.text, { voice: line.voice, speed: line.speed }) as GeneratedAudio);
+        }
+        const sampleRate = clips[0].sampling_rate;
+        const output = joinClips(clips, request.pauseMs ?? 650, sampleRate);
+        const buffer = output.buffer as ArrayBuffer;
+        workerScope.postMessage({ type: "complete", id: request.id, buffer, sampleRate }, [buffer]);
+        return;
+      }
+
+      if (request.type === "encode") {
+        postStatus("Encoding MP3…", activeEngine?.label);
+        if (!request.buffer) throw new Error("Missing audio data.");
+        const mp3 = await encodeMp3(new Float32Array(request.buffer), request.sampleRate ?? 24_000);
+        const buffer = mp3.buffer as ArrayBuffer;
+        workerScope.postMessage({ type: "complete", id: request.id, buffer }, [buffer]);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The voice engine failed.";
+      workerScope.postMessage({ type: "error", id: request.id, message });
+    }
+  })();
+});

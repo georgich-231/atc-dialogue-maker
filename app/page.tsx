@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  makeDialogueAudio,
+  makeMp3,
+  makeVoicePreview,
+  subscribeToEngineStatus,
+  warmVoiceEngine
+} from "../src/audio-worker-client";
 
 type Role = "atc" | "pilot";
 type EffectName = "clean" | "light" | "vhf" | "muffled";
 type DialogueLine = { role: Role; text: string };
 type Voice = { id: string; name: string; accent: string; gender: "Male" | "Female" };
-type GeneratedAudio = { audio: Float32Array; sampling_rate: number };
 
 const voices: Voice[] = [
   { id: "bm_george", name: "George", accent: "British", gender: "Male" },
@@ -40,32 +46,6 @@ const effectCopy: Record<EffectName, string> = {
   muffled: "Narrow, low-detail band-pass."
 };
 
-let modelPromise: Promise<any> | null = null;
-
-async function getVoiceModel(onProgress: (message: string) => void) {
-  if (!modelPromise) {
-    modelPromise = (async () => {
-      onProgress("Loading the voice model for the first time…");
-      const { KokoroTTS } = await import("kokoro-js");
-      const model = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
-        dtype: "q8",
-        device: "wasm",
-        progress_callback: (progress: { status?: string; progress?: number }) => {
-          if (progress.status === "progress" && Number.isFinite(progress.progress)) {
-            onProgress(`Loading voice model… ${Math.round(progress.progress ?? 0)}%`);
-          }
-        }
-      } as any);
-      onProgress("Voice model ready.");
-      return model;
-    })().catch((error) => {
-      modelPromise = null;
-      throw error;
-    });
-  }
-  return modelPromise;
-}
-
 export default function DialogueMaker() {
   const [script, setScript] = useState(sampleScript);
   const [atcVoice, setAtcVoice] = useState("bm_george");
@@ -91,23 +71,46 @@ export default function DialogueMaker() {
     };
   }, [resultUrl]);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToEngineStatus(({ message }) => setStatus(message));
+    const startWarmup = () => {
+      void warmVoiceEngine().catch(() => {
+        // A button press will retry and surface any useful error.
+      });
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (idleWindow.requestIdleCallback) {
+      const handle = idleWindow.requestIdleCallback(startWarmup, { timeout: 1500 });
+      return () => {
+        idleWindow.cancelIdleCallback?.(handle);
+        unsubscribe();
+      };
+    }
+
+    const handle = window.setTimeout(startWarmup, 700);
+    return () => {
+      window.clearTimeout(handle);
+      unsubscribe();
+    };
+  }, []);
+
   async function preview(role: Role) {
     setBusy(true);
     setError("");
     try {
-      const model = await getVoiceModel(setStatus);
-      setStatus(`Making the ${role === "atc" ? "controller" : "pilot"} preview…`);
-      const generated = await model.generate(
+      const generated = await makeVoicePreview(
         role === "atc"
           ? "Balkan one two three, Sofia Tower, runway two seven, cleared for takeoff."
           : "Cleared for takeoff runway two seven, Balkan one two three.",
-        {
-          voice: role === "atc" ? atcVoice : pilotVoice,
-          speed: rateToSpeed(role === "atc" ? atcRate : pilotRate)
-        }
-      ) as GeneratedAudio;
-      const filtered = await applyEffect(generated.audio, generated.sampling_rate, effect);
-      const previewBlob = encodeWav(filtered, generated.sampling_rate);
+        role === "atc" ? atcVoice : pilotVoice,
+        rateToSpeed(role === "atc" ? atcRate : pilotRate)
+      );
+      const filtered = await applyEffect(generated.samples, generated.sampleRate, effect);
+      const previewBlob = encodeWav(filtered, generated.sampleRate);
       if (previewAudio.current) {
         previewAudio.current.pause();
         URL.revokeObjectURL(previewAudio.current.src);
@@ -130,23 +133,15 @@ export default function DialogueMaker() {
       const dialogue = parseScript(script);
       if (atcVoice === pilotVoice) throw new Error("Choose two different voices so the speakers are easy to distinguish.");
 
-      const model = await getVoiceModel(setStatus);
-      const clips: GeneratedAudio[] = [];
-      for (let index = 0; index < dialogue.length; index += 1) {
-        const line = dialogue[index];
-        setStatus(`Making transmission ${index + 1} of ${dialogue.length}…`);
-        clips.push(await model.generate(line.text, {
-          voice: line.role === "atc" ? atcVoice : pilotVoice,
-          speed: rateToSpeed(line.role === "atc" ? atcRate : pilotRate)
-        }) as GeneratedAudio);
-      }
+      const generated = await makeDialogueAudio(dialogue.map((line) => ({
+        text: line.text,
+        voice: line.role === "atc" ? atcVoice : pilotVoice,
+        speed: rateToSpeed(line.role === "atc" ? atcRate : pilotRate)
+      })), pauseMs);
 
-      setStatus("Adding pauses and the selected radio sound…");
-      const sampleRate = clips[0].sampling_rate;
-      const joined = joinClips(clips, pauseMs, sampleRate);
-      const filtered = await applyEffect(joined, sampleRate, effect);
-      setStatus("Preparing the MP3…");
-      const mp3Blob = await encodeMp3(filtered, sampleRate);
+      setStatus("Applying radio effect…");
+      const filtered = await applyEffect(generated.samples, generated.sampleRate, effect);
+      const mp3Blob = await makeMp3(filtered, generated.sampleRate);
       const nextUrl = URL.createObjectURL(mp3Blob);
       if (resultUrl) URL.revokeObjectURL(resultUrl);
       setResultUrl(nextUrl);
@@ -261,7 +256,7 @@ export default function DialogueMaker() {
         </div>
       </aside>
 
-      <p className="local-note">Voice model downloads on first use.</p>
+      <p className="local-note">Background voice engine · GPU when available</p>
     </main>
   );
 }
@@ -338,19 +333,6 @@ function rateToSpeed(rate: number) {
   return Math.max(0.7, Math.min(1.3, 1 + rate / 100));
 }
 
-function joinClips(clips: GeneratedAudio[], pauseMs: number, sampleRate: number) {
-  const pauseLength = Math.round(sampleRate * pauseMs / 1000);
-  const totalLength = clips.reduce((sum, clip) => sum + clip.audio.length, 0) + pauseLength * (clips.length - 1);
-  const output = new Float32Array(totalLength);
-  let offset = 0;
-  clips.forEach((clip, index) => {
-    output.set(clip.audio, offset);
-    offset += clip.audio.length;
-    if (index < clips.length - 1) offset += pauseLength;
-  });
-  return output;
-}
-
 async function applyEffect(samples: Float32Array, sampleRate: number, effect: EffectName) {
   if (effect === "clean") return samples.slice();
   const context = new OfflineAudioContext(1, samples.length, sampleRate);
@@ -400,24 +382,6 @@ function encodeWav(samples: Float32Array, sampleRate: number) {
     view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
   }
   return new Blob([buffer], { type: "audio/wav" });
-}
-
-async function encodeMp3(samples: Float32Array, sampleRate: number) {
-  const lame = await import("@breezystack/lamejs");
-  const encoder = new lame.Mp3Encoder(1, sampleRate, 96);
-  const pcm = new Int16Array(samples.length);
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, samples[index]));
-    pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-  }
-  const chunks: BlobPart[] = [];
-  for (let offset = 0; offset < pcm.length; offset += 1152) {
-    const chunk = encoder.encodeBuffer(pcm.subarray(offset, offset + 1152));
-    if (chunk.length) chunks.push(new Uint8Array(chunk));
-  }
-  const end = encoder.flush();
-  if (end.length) chunks.push(new Uint8Array(end));
-  return new Blob(chunks, { type: "audio/mpeg" });
 }
 
 function writeText(view: DataView, offset: number, text: string) {

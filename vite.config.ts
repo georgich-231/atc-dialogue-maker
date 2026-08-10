@@ -10,6 +10,9 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    worker: {
+      format: "es" as const
+    },
     plugins: [
       vinext(),
       sites(),

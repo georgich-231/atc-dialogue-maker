@@ -9,16 +9,16 @@ export async function generateMetadata(): Promise<Metadata> {
   const baseUrl = `${protocol}://${host}`;
 
   return {
-    title: "Dad's ATC Dialogue Maker",
+    title: "ATC Dialogue Maker",
     description: "Make two-voice controller and pilot practice recordings in the browser.",
     openGraph: {
-      title: "Dad's ATC Dialogue Maker",
+      title: "ATC Dialogue Maker",
       description: "Two voices, radio effects, one useful practice recording.",
       images: [`${baseUrl}/og.png`]
     },
     twitter: {
       card: "summary_large_image",
-      title: "Dad's ATC Dialogue Maker",
+      title: "ATC Dialogue Maker",
       description: "Two voices, radio effects, one useful practice recording.",
       images: [`${baseUrl}/og.png`]
     }

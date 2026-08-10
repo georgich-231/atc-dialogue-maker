@@ -74,7 +74,7 @@ body::before {
 
 .personal-label { display: flex; align-items: center; justify-content: space-between; color: #c8c6c1; font-size: 10px; letter-spacing: .13em; text-transform: uppercase; }
 .personal-label i { width: 9px; height: 9px; border-radius: 50%; background: #a8dfb3; box-shadow: 0 0 0 5px rgba(168,223,179,.1); }
-.for-dad { margin: 84px 0 14px; color: #efb188; font: italic 17px/1.4 Georgia, serif; }
+.for-practice { margin: 84px 0 14px; color: #efb188; font: italic 17px/1.4 Georgia, serif; }
 .intro-card h1 { margin: 0; font: 600 46px/.96 Georgia, serif; letter-spacing: -.04em; }
 .intro-copy { margin: 23px 0 0; color: #b8babd; font-size: 13px; line-height: 1.7; }
 .tiny-note { position: absolute; z-index: 1; left: 25px; right: 25px; bottom: 25px; display: grid; grid-template-columns: auto 1fr; gap: 10px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.13); }
@@ -156,7 +156,7 @@ input[type="range"] { width: 100%; accent-color: var(--blue); }
 @media (max-width: 1120px) {
   .maker-shell { grid-template-columns: 230px minmax(480px,1fr); grid-template-areas: "intro work" "choices work" "note note"; }
   .intro-card { position: static; min-height: 390px; }
-  .for-dad { margin-top: 46px; }
+  .for-practice { margin-top: 46px; }
   .intro-card h1 { font-size: 38px; }
 }
 

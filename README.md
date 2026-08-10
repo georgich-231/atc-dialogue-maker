@@ -1,25 +1,17 @@
-# ATC Dialogue Studio
+# ATC Dialogue Maker
 
-A local web app that turns a labelled ATC/pilot script into a two-voice MP3 dialogue.
+A two-voice ATC and pilot practice recording maker that runs directly in the browser.
 
-The transmission-sound setting can leave the voices clean or add light radio filtering, a compressed VHF-style sound, or a strongly muffled recording effect. The selected effect is used for previews and the final MP3.
+## Run locally
 
-## Run it
-
-Requirements: Node.js 20 or newer and an internet connection.
+Requirements: Node.js 22 or newer.
 
 ```powershell
 npm install
-npm start
-```
-
-Then open [http://localhost:4173](http://localhost:4173).
-
-For automatic restarts while editing:
-
-```powershell
 npm run dev
 ```
+
+Open the local address printed by the development server.
 
 ## Script format
 
@@ -34,9 +26,10 @@ The aliases `CONTROLLER`, `TOWER`, `GROUND`, `APPROACH`, and `DEPARTURE` are als
 
 ## Notes
 
-- The neural voices are retrieved through Microsoft Edge's online speech service. No API key is needed, but the app needs internet access and the service may change.
+- Speech generation runs on the visitor's device. The voice model is downloaded on the first generation and cached by the browser.
+- The transmission setting supports clean, light-radio, VHF-radio, and muffled-recording effects.
 - Spell the script as it should sound. For example, write `one two four decimal six` rather than `124.6` when that is the desired pronunciation.
 - Synthetic audio can mispronounce callsigns, place names, abbreviations, or numbers. Review every recording.
 - This app is intended for preparation and training only, never for live operational communication or safety-critical use.
 
-Run the parser tests with `npm test`. To also contact the voice service and verify MP3 assembly, run `npm run test:live`.
+Run parser tests with `npm test` and create a production build with `npm run build`.

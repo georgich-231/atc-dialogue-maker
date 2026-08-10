@@ -164,7 +164,7 @@ export default function DialogueMaker() {
     <main className="maker-shell">
       <section className="intro-card">
         <div className="personal-label"><span>Personal tool</span><i aria-hidden="true" /></div>
-        <p className="for-dad">For Dad&apos;s ATC practice sessions</p>
+        <p className="for-practice">For ATC practice sessions</p>
         <h1>Make a practice<br />dialogue.</h1>
         <p className="intro-copy">Paste the two sides, pick a voice for each person, and make one recording.</p>
         <div className="tiny-note">

@@ -34,10 +34,10 @@ ATC: Balkan one two three, contact Sofia Departure on one two four decimal six.
 PILOT: One two four decimal six, Balkan one two three, good day.`;
 
 const effectCopy: Record<EffectName, string> = {
-  clean: "No filtering — the clearest version.",
-  light: "A gentle radio character that keeps speech easy to understand.",
-  vhf: "Narrow-band compression similar to an aviation radio.",
-  muffled: "A stronger cut for older or less clear recording practice."
+  clean: "Unfiltered output.",
+  light: "Light band-pass filter.",
+  vhf: "VHF band-pass and compression.",
+  muffled: "Narrow, low-detail band-pass."
 };
 
 let modelPromise: Promise<any> | null = null;
@@ -74,7 +74,7 @@ export default function DialogueMaker() {
   const [pilotRate, setPilotRate] = useState(0);
   const [pauseMs, setPauseMs] = useState(650);
   const [effect, setEffect] = useState<EffectName>("vhf");
-  const [status, setStatus] = useState("Ready when you are.");
+  const [status, setStatus] = useState("Ready.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [resultUrl, setResultUrl] = useState("");
@@ -151,7 +151,7 @@ export default function DialogueMaker() {
       if (resultUrl) URL.revokeObjectURL(resultUrl);
       setResultUrl(nextUrl);
       setResultLabel(`${dialogue.length} transmissions · ${effectLabel(effect)}`);
-      setStatus("Done — the practice dialogue is ready.");
+      setStatus("Done.");
     } catch (generationError) {
       setError(readableError(generationError));
       setStatus("The dialogue was not generated.");
@@ -163,24 +163,23 @@ export default function DialogueMaker() {
   return (
     <main className="maker-shell">
       <section className="intro-card">
-        <div className="personal-label"><span>Personal tool</span><i aria-hidden="true" /></div>
-        <p className="for-practice">For ATC practice sessions</p>
-        <h1>Make a practice<br />dialogue.</h1>
-        <p className="intro-copy">Paste the two sides, pick a voice for each person, and make one recording.</p>
-        <div className="tiny-note">
-          <span>!</span>
-          <p>For training preparation only. Always check callsigns, numbers, and place names.</p>
+        <div className="personal-label"><span>ATC / PILOT</span><i aria-hidden="true" /></div>
+        <h1>Dialogue<br />Maker.</h1>
+        <div className="format-list" aria-label="Output format">
+          <span>Script</span>
+          <span>2 voices</span>
+          <span>MP3</span>
         </div>
       </section>
 
       <section className="work-card">
         <div className="script-title-row">
           <div>
-            <p className="mini-label">The conversation</p>
-            <h2>What should they say?</h2>
+            <p className="mini-label">Script</p>
+            <h2>ATC / Pilot</h2>
           </div>
           <div className="small-actions">
-            <button type="button" onClick={() => setScript(sampleScript)}>Use example</button>
+            <button type="button" onClick={() => setScript(sampleScript)}>Example</button>
             <button type="button" onClick={() => setScript("")}>Clear</button>
           </div>
         </div>
@@ -188,7 +187,7 @@ export default function DialogueMaker() {
         <label className="sr-only" htmlFor="script">ATC and pilot script</label>
         <textarea id="script" value={script} onChange={(event) => setScript(event.target.value)} spellCheck placeholder={"ATC: Controller transmission\n\nPILOT: Pilot response"} />
         <div className="under-script">
-          <span>Use <b>ATC:</b> and <b>PILOT:</b> at the start of each transmission.</span>
+          <span><b>ATC:</b> / <b>PILOT:</b></span>
           <strong>{transmissionCount} transmission{transmissionCount === 1 ? "" : "s"}</strong>
         </div>
 
@@ -198,23 +197,23 @@ export default function DialogueMaker() {
         </div>
 
         <button className="make-button" type="button" disabled={busy} onClick={generateDialogue}>
-          <span>{busy ? "Working on it…" : "Make the dialogue"}</span>
+          <span>{busy ? "Generating…" : "Generate MP3"}</span>
           <small>MP3</small>
         </button>
 
         {resultUrl && (
           <div className="result-box">
-            <div><b>Recording ready</b><span>{resultLabel}</span></div>
+            <div><b>Ready</b><span>{resultLabel}</span></div>
             <audio controls src={resultUrl} />
-            <a href={resultUrl} download="atc-practice-dialogue.mp3">Save MP3</a>
+            <a href={resultUrl} download="atc-dialogue.mp3">Save MP3</a>
           </div>
         )}
       </section>
 
       <aside className="choices-card">
         <div className="choices-heading">
-          <p className="mini-label">The setup</p>
-          <h2>Choose how it sounds</h2>
+          <p className="mini-label">Audio</p>
+          <h2>Voices &amp; effect</h2>
         </div>
 
         <VoiceChoice
@@ -241,17 +240,17 @@ export default function DialogueMaker() {
         />
 
         <div className="field-block compact-field">
-          <label htmlFor="pause">Space between replies</label>
+          <label htmlFor="pause">Reply gap</label>
           <select id="pause" value={pauseMs} onChange={(event) => setPauseMs(Number(event.target.value))}>
             <option value={350}>Quick · 0.35 seconds</option>
             <option value={650}>Natural · 0.65 seconds</option>
             <option value={1000}>Measured · 1 second</option>
-            <option value={1500}>Training · 1.5 seconds</option>
+            <option value={1500}>Long · 1.5 seconds</option>
           </select>
         </div>
 
         <div className="field-block compact-field last-field">
-          <label htmlFor="effect">Recording character</label>
+          <label htmlFor="effect">Radio effect</label>
           <select id="effect" value={effect} onChange={(event) => setEffect(event.target.value as EffectName)}>
             <option value="clean">Clean voice</option>
             <option value="light">Light radio</option>
@@ -262,7 +261,7 @@ export default function DialogueMaker() {
         </div>
       </aside>
 
-      <p className="local-note">Speech is made on this device. The first run downloads the voice model; the browser caches it for later.</p>
+      <p className="local-note">Voice model downloads on first use.</p>
     </main>
   );
 }
@@ -284,7 +283,7 @@ function VoiceChoice({ number, role, color, value, rate, disabled, onVoice, onRa
     <div className="voice-choice">
       <div className="role-heading">
         <span className={color}>{number}</span>
-        <div><small>Voice for the</small><b>{role}</b></div>
+        <div><b>{role}</b></div>
       </div>
       <div className="voice-select-row">
         <label className="sr-only" htmlFor={`${role}-voice`}>{role} voice</label>
@@ -298,7 +297,7 @@ function VoiceChoice({ number, role, color, value, rate, disabled, onVoice, onRa
         </select>
         <button type="button" disabled={disabled} onClick={onPreview} aria-label={`Preview ${role.toLowerCase()} voice`}>▶</button>
       </div>
-      <label className="rate-label" htmlFor={`${role}-rate`}><span>Speaking speed</span><b>{rate > 0 ? "+" : ""}{rate}%</b></label>
+      <label className="rate-label" htmlFor={`${role}-rate`}><span>Rate</span><b>{rate > 0 ? "+" : ""}{rate}%</b></label>
       <input id={`${role}-rate`} type="range" min="-30" max="30" step="5" value={rate} onChange={(event) => onRate(Number(event.target.value))} />
     </div>
   );

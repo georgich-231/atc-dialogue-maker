@@ -1,6 +1,6 @@
 # ATC Dialogue Maker
 
-A two-voice ATC and pilot practice recording maker that runs directly in the browser.
+A two-voice ATC dialogue generator with radio effects and MP3 export. It runs directly in the browser.
 
 ## Run locally
 
@@ -30,6 +30,6 @@ The aliases `CONTROLLER`, `TOWER`, `GROUND`, `APPROACH`, and `DEPARTURE` are als
 - The transmission setting supports clean, light-radio, VHF-radio, and muffled-recording effects.
 - Spell the script as it should sound. For example, write `one two four decimal six` rather than `124.6` when that is the desired pronunciation.
 - Synthetic audio can mispronounce callsigns, place names, abbreviations, or numbers. Review every recording.
-- This app is intended for preparation and training only, never for live operational communication or safety-critical use.
+- Generated audio is intended for offline dialogue work, not live operational communication.
 
 Run parser tests with `npm test` and create a production build with `npm run build`.

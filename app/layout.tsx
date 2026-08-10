@@ -10,16 +10,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     title: "ATC Dialogue Maker",
-    description: "Make two-voice controller and pilot practice recordings in the browser.",
+    description: "Two-voice ATC dialogue generation with radio effects and MP3 export.",
     openGraph: {
       title: "ATC Dialogue Maker",
-      description: "Two voices, radio effects, one useful practice recording.",
+      description: "Two voices. Radio effects. MP3 export.",
       images: [`${baseUrl}/og.png`]
     },
     twitter: {
       card: "summary_large_image",
       title: "ATC Dialogue Maker",
-      description: "Two voices, radio effects, one useful practice recording.",
+      description: "Two voices. Radio effects. MP3 export.",
       images: [`${baseUrl}/og.png`]
     }
   };

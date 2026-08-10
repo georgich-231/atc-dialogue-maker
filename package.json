@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A personal two-voice ATC and pilot practice dialogue maker.",
+  "description": "Two-voice ATC dialogue generation with radio effects and MP3 export.",
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "build:pages": "vite build --config vite.pages.config.ts",
     "start": "vinext start",
     "legacy": "node server.js",
     "test": "node --test test/script-parser.test.js",

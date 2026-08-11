@@ -8,9 +8,11 @@ import {
   subscribeToEngineStatus,
   warmVoiceEngine
 } from "../src/audio-worker-client";
+import { applyRecordingBed, type RecordingBed } from "../src/recording-bed";
 
 type Role = "atc" | "pilot";
 type EffectName = "clean" | "light" | "vhf" | "muffled";
+type AccentProfile = "native" | "american" | "british" | "scottish" | "irish" | "indian" | "italian" | "caribbean" | "new-york" | "northern" | "west-midlands" | "rp";
 type DialogueLine = { role: Role; text: string };
 type Voice = { id: string; name: string; accent: string; gender: "Male" | "Female" };
 
@@ -25,10 +27,39 @@ const voices: Voice[] = [
   { id: "am_eric", name: "Eric", accent: "American", gender: "Male" },
   { id: "am_onyx", name: "Onyx", accent: "American", gender: "Male" },
   { id: "am_liam", name: "Liam", accent: "American", gender: "Male" },
+  { id: "am_adam", name: "Adam", accent: "American", gender: "Male" },
+  { id: "am_echo", name: "Echo", accent: "American", gender: "Male" },
+  { id: "am_santa", name: "Santa", accent: "American", gender: "Male" },
   { id: "bf_emma", name: "Emma", accent: "British", gender: "Female" },
   { id: "bf_isabella", name: "Isabella", accent: "British", gender: "Female" },
+  { id: "bf_alice", name: "Alice", accent: "British", gender: "Female" },
+  { id: "bf_lily", name: "Lily", accent: "British", gender: "Female" },
   { id: "af_heart", name: "Heart", accent: "American", gender: "Female" },
-  { id: "af_bella", name: "Bella", accent: "American", gender: "Female" }
+  { id: "af_bella", name: "Bella", accent: "American", gender: "Female" },
+  { id: "af_alloy", name: "Alloy", accent: "American", gender: "Female" },
+  { id: "af_aoede", name: "Aoede", accent: "American", gender: "Female" },
+  { id: "af_jessica", name: "Jessica", accent: "American", gender: "Female" },
+  { id: "af_kore", name: "Kore", accent: "American", gender: "Female" },
+  { id: "af_nicole", name: "Nicole", accent: "American", gender: "Female" },
+  { id: "af_nova", name: "Nova", accent: "American", gender: "Female" },
+  { id: "af_river", name: "River", accent: "American", gender: "Female" },
+  { id: "af_sarah", name: "Sarah", accent: "American", gender: "Female" },
+  { id: "af_sky", name: "Sky", accent: "American", gender: "Female" }
+];
+
+const accentOptions: { value: AccentProfile; label: string }[] = [
+  { value: "native", label: "Voice native accent" },
+  { value: "american", label: "American" },
+  { value: "british", label: "British" },
+  { value: "scottish", label: "Scottish" },
+  { value: "irish", label: "Irish-style · local approximation" },
+  { value: "indian", label: "Indian-style · local approximation" },
+  { value: "italian", label: "Italian-style · local approximation" },
+  { value: "caribbean", label: "Caribbean" },
+  { value: "new-york", label: "New York" },
+  { value: "northern", label: "Northern England" },
+  { value: "west-midlands", label: "West Midlands" },
+  { value: "rp", label: "Received Pronunciation" }
 ];
 
 const sampleScript = `ATC: Balkan one two three, Sofia Tower, wind two eight zero degrees, six knots, runway two seven, cleared for takeoff.
@@ -46,14 +77,25 @@ const effectCopy: Record<EffectName, string> = {
   muffled: "Narrow, low-detail band-pass."
 };
 
+const recordingBedCopy: Record<RecordingBed, string> = {
+  none: "No background noise.",
+  "receiver-hiss": "A quiet, continuous receiver hiss.",
+  "vhf-static": "Steady airband static across voices and reply gaps.",
+  "weak-signal": "Uneven static, light fading and occasional crackle.",
+  "old-recorder": "Low tape noise, hum and small recording pops."
+};
+
 export default function DialogueMaker() {
   const [script, setScript] = useState(sampleScript);
   const [atcVoice, setAtcVoice] = useState("bm_george");
   const [pilotVoice, setPilotVoice] = useState("am_michael");
+  const [atcAccent, setAtcAccent] = useState<AccentProfile>("native");
+  const [pilotAccent, setPilotAccent] = useState<AccentProfile>("native");
   const [atcRate, setAtcRate] = useState(0);
   const [pilotRate, setPilotRate] = useState(0);
   const [pauseMs, setPauseMs] = useState(650);
   const [effect, setEffect] = useState<EffectName>("vhf");
+  const [recordingBed, setRecordingBed] = useState<RecordingBed>("none");
   const [status, setStatus] = useState("Ready.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,10 +149,12 @@ export default function DialogueMaker() {
           ? "Balkan one two three, Sofia Tower, runway two seven, cleared for takeoff."
           : "Cleared for takeoff runway two seven, Balkan one two three.",
         role === "atc" ? atcVoice : pilotVoice,
-        rateToSpeed(role === "atc" ? atcRate : pilotRate)
+        rateToSpeed(role === "atc" ? atcRate : pilotRate),
+        role === "atc" ? atcAccent : pilotAccent
       );
       const filtered = await applyEffect(generated.samples, generated.sampleRate, effect);
-      const previewBlob = encodeWav(filtered, generated.sampleRate);
+      const withRecordingBed = applyRecordingBed(filtered, generated.sampleRate, recordingBed);
+      const previewBlob = encodeWav(withRecordingBed, generated.sampleRate);
       if (previewAudio.current) {
         previewAudio.current.pause();
         URL.revokeObjectURL(previewAudio.current.src);
@@ -136,16 +180,18 @@ export default function DialogueMaker() {
       const generated = await makeDialogueAudio(dialogue.map((line) => ({
         text: line.text,
         voice: line.role === "atc" ? atcVoice : pilotVoice,
-        speed: rateToSpeed(line.role === "atc" ? atcRate : pilotRate)
+        speed: rateToSpeed(line.role === "atc" ? atcRate : pilotRate),
+        accent: line.role === "atc" ? atcAccent : pilotAccent
       })), pauseMs);
 
       setStatus("Applying radio effect…");
       const filtered = await applyEffect(generated.samples, generated.sampleRate, effect);
-      const mp3Blob = await makeMp3(filtered, generated.sampleRate);
+      const mp3Blob = await makeMp3(filtered, generated.sampleRate, recordingBed);
       const nextUrl = URL.createObjectURL(mp3Blob);
       if (resultUrl) URL.revokeObjectURL(resultUrl);
       setResultUrl(nextUrl);
-      setResultLabel(`${dialogue.length} transmissions · ${effectLabel(effect)}`);
+      const bedLabel = recordingBed === "none" ? "" : ` · ${recordingBedLabel(recordingBed)}`;
+      setResultLabel(`${dialogue.length} transmissions · ${effectLabel(effect)}${bedLabel}`);
       setStatus("Done.");
     } catch (generationError) {
       setError(readableError(generationError));
@@ -216,9 +262,11 @@ export default function DialogueMaker() {
           role="Controller"
           color="blue"
           value={atcVoice}
+          accent={atcAccent}
           rate={atcRate}
           disabled={busy}
           onVoice={setAtcVoice}
+          onAccent={setAtcAccent}
           onRate={setAtcRate}
           onPreview={() => preview("atc")}
         />
@@ -227,9 +275,11 @@ export default function DialogueMaker() {
           role="Pilot"
           color="orange"
           value={pilotVoice}
+          accent={pilotAccent}
           rate={pilotRate}
           disabled={busy}
           onVoice={setPilotVoice}
+          onAccent={setPilotAccent}
           onRate={setPilotRate}
           onPreview={() => preview("pilot")}
         />
@@ -244,7 +294,7 @@ export default function DialogueMaker() {
           </select>
         </div>
 
-        <div className="field-block compact-field last-field">
+        <div className="field-block compact-field">
           <label htmlFor="effect">Radio effect</label>
           <select id="effect" value={effect} onChange={(event) => setEffect(event.target.value as EffectName)}>
             <option value="clean">Clean voice</option>
@@ -254,6 +304,18 @@ export default function DialogueMaker() {
           </select>
           <p>{effectCopy[effect]}</p>
         </div>
+
+        <div className="field-block compact-field last-field">
+          <label htmlFor="recording-bed">Recording sound</label>
+          <select id="recording-bed" value={recordingBed} onChange={(event) => setRecordingBed(event.target.value as RecordingBed)}>
+            <option value="none">None</option>
+            <option value="receiver-hiss">Light receiver hiss</option>
+            <option value="vhf-static">VHF static bed</option>
+            <option value="weak-signal">Weak signal</option>
+            <option value="old-recorder">Old recorder</option>
+          </select>
+          <p>{recordingBedCopy[recordingBed]}</p>
+        </div>
       </aside>
 
       <p className="local-note">Background voice engine · GPU when available</p>
@@ -261,14 +323,16 @@ export default function DialogueMaker() {
   );
 }
 
-function VoiceChoice({ number, role, color, value, rate, disabled, onVoice, onRate, onPreview }: {
+function VoiceChoice({ number, role, color, value, accent, rate, disabled, onVoice, onAccent, onRate, onPreview }: {
   number: string;
   role: string;
   color: "blue" | "orange";
   value: string;
+  accent: AccentProfile;
   rate: number;
   disabled: boolean;
   onVoice: (value: string) => void;
+  onAccent: (value: AccentProfile) => void;
   onRate: (value: number) => void;
   onPreview: () => void;
 }) {
@@ -291,6 +355,12 @@ function VoiceChoice({ number, role, color, value, rate, disabled, onVoice, onRa
           </optgroup>
         </select>
         <button type="button" disabled={disabled} onClick={onPreview} aria-label={`Preview ${role.toLowerCase()} voice`}>▶</button>
+      </div>
+      <div className="accent-select-row">
+        <label htmlFor={`${role}-accent`}>English accent</label>
+        <select id={`${role}-accent`} value={accent} onChange={(event) => onAccent(event.target.value as AccentProfile)}>
+          {accentOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
       </div>
       <label className="rate-label" htmlFor={`${role}-rate`}><span>Rate</span><b>{rate > 0 ? "+" : ""}{rate}%</b></label>
       <input id={`${role}-rate`} type="range" min="-30" max="30" step="5" value={rate} onChange={(event) => onRate(Number(event.target.value))} />
@@ -390,6 +460,16 @@ function writeText(view: DataView, offset: number, text: string) {
 
 function effectLabel(effect: EffectName) {
   return { clean: "Clean voice", light: "Light radio", vhf: "VHF radio", muffled: "Muffled recording" }[effect];
+}
+
+function recordingBedLabel(bed: RecordingBed) {
+  return {
+    none: "No recording bed",
+    "receiver-hiss": "Receiver hiss",
+    "vhf-static": "VHF static bed",
+    "weak-signal": "Weak signal",
+    "old-recorder": "Old recorder"
+  }[bed];
 }
 
 function readableError(error: unknown) {

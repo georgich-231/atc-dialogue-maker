@@ -1,3 +1,5 @@
+import { applyRecordingBed, type RecordingBed } from "./recording-bed";
+
 type Engine = {
   device: "webgpu" | "wasm";
   dtype: "fp32" | "q8";
@@ -13,6 +15,7 @@ type DialogueLine = {
   text: string;
   voice: string;
   speed: number;
+  accent: string;
 };
 
 type WorkerRequest = {
@@ -21,10 +24,12 @@ type WorkerRequest = {
   text?: string;
   voice?: string;
   speed?: number;
+  accent?: string;
   lines?: DialogueLine[];
   pauseMs?: number;
   buffer?: ArrayBuffer;
   sampleRate?: number;
+  recordingBed?: string;
 };
 
 type WorkerScope = {
@@ -175,6 +180,55 @@ async function encodeMp3(samples: Float32Array, sampleRate: number) {
   return output;
 }
 
+const accentLanguages: Record<string, string> = {
+  american: "en-us",
+  british: "en",
+  scottish: "en-gb-scotland",
+  caribbean: "en-029",
+  "new-york": "en-us-nyc",
+  northern: "en-gb-x-gbclan",
+  "west-midlands": "en-gb-x-gbcwmd",
+  rp: "en-gb-x-rp",
+  irish: "en-gb-scotland",
+  indian: "en",
+  italian: "en"
+};
+
+async function generateSpeech(model: any, text: string, voice: string, speed: number, accent = "native") {
+  if (accent === "native") return model.generate(text, { voice, speed }) as Promise<GeneratedAudio>;
+
+  const { phonemize } = await import("phonemizer");
+  const language = accentLanguages[accent] ?? "en";
+  const punctuation = /([;:,.!?¡¿—…“”()]+)/g;
+  const sections = text.split(punctuation);
+  const phonemeSections = await Promise.all(sections.map(async (section, index) => {
+    if (!section || index % 2 === 1) return section;
+    return (await phonemize(section, language)).join(" ");
+  }));
+
+  let phonemes = phonemeSections.join("")
+    .replace(/ʲ/g, "j")
+    .replace(/r/g, "ɹ")
+    .replace(/x/g, "k")
+    .replace(/ɬ/g, "l");
+
+  if (accent === "irish") {
+    phonemes = phonemes.replace(/θ/g, "t̪").replace(/ð/g, "d̪").replace(/ʉː/g, "uː");
+  } else if (accent === "indian") {
+    phonemes = phonemes.replace(/θ/g, "t̪").replace(/ð/g, "d̪");
+  } else if (accent === "italian") {
+    phonemes = phonemes
+      .replace(/θ/g, "t")
+      .replace(/ð/g, "d")
+      .replace(/ɹ/g, "ɾ")
+      .replace(/əʊ/g, "oː")
+      .replace(/eɪ/g, "eː");
+  }
+
+  const { input_ids } = model.tokenizer(phonemes.trim(), { truncation: true });
+  return model.generate_from_ids(input_ids, { voice, speed }) as Promise<GeneratedAudio>;
+}
+
 workerScope.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
   void (async () => {
     const request = event.data;
@@ -188,10 +242,13 @@ workerScope.addEventListener("message", (event: MessageEvent<WorkerRequest>) => 
       if (request.type === "preview") {
         const model = await getModel();
         postStatus("Generating preview…", activeEngine?.label);
-        const generated = await model.generate(request.text, {
-          voice: request.voice,
-          speed: request.speed
-        }) as GeneratedAudio;
+        const generated = await generateSpeech(
+          model,
+          request.text ?? "",
+          request.voice ?? "af_heart",
+          request.speed ?? 1,
+          request.accent
+        );
         const output = generated.audio.slice();
         const buffer = output.buffer as ArrayBuffer;
         workerScope.postMessage({ type: "complete", id: request.id, buffer, sampleRate: generated.sampling_rate }, [buffer]);
@@ -205,7 +262,7 @@ workerScope.addEventListener("message", (event: MessageEvent<WorkerRequest>) => 
         for (let index = 0; index < lines.length; index += 1) {
           const line = lines[index];
           postStatus(`Generating ${index + 1} / ${lines.length}…`, activeEngine?.label);
-          clips.push(await model.generate(line.text, { voice: line.voice, speed: line.speed }) as GeneratedAudio);
+          clips.push(await generateSpeech(model, line.text, line.voice, line.speed, line.accent));
         }
         const sampleRate = clips[0].sampling_rate;
         const output = joinClips(clips, request.pauseMs ?? 650, sampleRate);
@@ -217,7 +274,13 @@ workerScope.addEventListener("message", (event: MessageEvent<WorkerRequest>) => 
       if (request.type === "encode") {
         postStatus("Encoding MP3…", activeEngine?.label);
         if (!request.buffer) throw new Error("Missing audio data.");
-        const mp3 = await encodeMp3(new Float32Array(request.buffer), request.sampleRate ?? 24_000);
+        const sampleRate = request.sampleRate ?? 24_000;
+        const mixed = applyRecordingBed(
+          new Float32Array(request.buffer),
+          sampleRate,
+          (request.recordingBed ?? "none") as RecordingBed
+        );
+        const mp3 = await encodeMp3(mixed, sampleRate);
         const buffer = mp3.buffer as ArrayBuffer;
         workerScope.postMessage({ type: "complete", id: request.id, buffer }, [buffer]);
       }

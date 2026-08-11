@@ -7,6 +7,7 @@ type DialogueRequestLine = {
   text: string;
   voice: string;
   speed: number;
+  accent: string;
 };
 
 type AudioResult = {
@@ -98,12 +99,13 @@ export async function warmVoiceEngine() {
   await request({ type: "warmup" }, [], 480_000);
 }
 
-export async function makeVoicePreview(text: string, voice: string, speed: number): Promise<AudioResult> {
+export async function makeVoicePreview(text: string, voice: string, speed: number, accent: string): Promise<AudioResult> {
   const result = await request<{ buffer: ArrayBuffer; sampleRate: number }>({
     type: "preview",
     text,
     voice,
-    speed
+    speed,
+    accent
   }, [], 240_000);
   return { samples: new Float32Array(result.buffer), sampleRate: result.sampleRate };
 }
@@ -117,12 +119,13 @@ export async function makeDialogueAudio(lines: DialogueRequestLine[], pauseMs: n
   return { samples: new Float32Array(result.buffer), sampleRate: result.sampleRate };
 }
 
-export async function makeMp3(samples: Float32Array, sampleRate: number) {
+export async function makeMp3(samples: Float32Array, sampleRate: number, recordingBed: string) {
   const buffer = samples.buffer as ArrayBuffer;
   const result = await request<{ buffer: ArrayBuffer }>({
     type: "encode",
     buffer,
-    sampleRate
+    sampleRate,
+    recordingBed
   }, [buffer], 240_000);
   return new Blob([result.buffer], { type: "audio/mpeg" });
 }

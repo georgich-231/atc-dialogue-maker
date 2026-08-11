@@ -36,9 +36,33 @@ type WorkerScope = {
 const workerScope = globalThis as unknown as WorkerScope;
 let modelPromise: Promise<any> | null = null;
 let activeEngine: Engine | null = null;
+let isAppleMobile = false;
 
 function postStatus(message: string, engine?: Engine["label"]) {
   workerScope.postMessage({ type: "status", message, engine });
+}
+
+function detectAppleMobile() {
+  const navigatorWithTouch = workerScope.navigator as Navigator & {
+    platform?: string;
+    maxTouchPoints?: number;
+  };
+  return /iPad|iPhone|iPod/i.test(navigatorWithTouch.userAgent) ||
+    (navigatorWithTouch.platform === "MacIntel" && (navigatorWithTouch.maxTouchPoints ?? 0) > 1);
+}
+
+async function prepareAppleRuntime() {
+  isAppleMobile = detectAppleMobile();
+  if (!isAppleMobile) return;
+
+  postStatus("iOS compatibility engine loading…", "cpu");
+  const standardWasmModule = await import("onnxruntime-web/wasm");
+  const standardWasm = standardWasmModule.env ? standardWasmModule : standardWasmModule.default;
+  standardWasm.env.wasm.numThreads = 1;
+  standardWasm.env.wasm.proxy = false;
+  standardWasm.env.wasm.initTimeout = 120_000;
+  standardWasm.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0-dev.20250409-89f8206ba4/dist/";
+  (globalThis as Record<PropertyKey, unknown>)[Symbol.for("onnxruntime")] = standardWasm;
 }
 
 async function chooseEngine(): Promise<Engine> {
@@ -51,7 +75,7 @@ async function chooseEngine(): Promise<Engine> {
   const slowConnection = connection?.saveData || ["slow-2g", "2g"].includes(connection?.effectiveType ?? "");
   const desktopMemory = (navigatorWithHardware.deviceMemory ?? 0) >= 8;
 
-  if (navigatorWithHardware.gpu && desktopMemory && !slowConnection) {
+  if (!isAppleMobile && navigatorWithHardware.gpu && desktopMemory && !slowConnection) {
     try {
       const adapter = await navigatorWithHardware.gpu.requestAdapter({ powerPreference: "high-performance" });
       if (adapter) return { device: "webgpu", dtype: "fp32", label: "gpu" };
@@ -63,6 +87,7 @@ async function chooseEngine(): Promise<Engine> {
 }
 
 async function loadModel() {
+  await prepareAppleRuntime();
   const { KokoroTTS } = await import("kokoro-js");
   const preferred = await chooseEngine();
 

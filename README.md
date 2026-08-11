@@ -28,6 +28,7 @@ The aliases `CONTROLLER`, `TOWER`, `GROUND`, `APPROACH`, and `DEPARTURE` are als
 
 - Speech generation runs on the visitor's device. The voice model is downloaded on the first generation and cached by the browser.
 - The voice engine and MP3 encoder run in a background worker. Compatible desktop browsers use WebGPU acceleration, with a WASM fallback.
+- iPhone and iPad browsers use the standard single-threaded WASM runtime to avoid WebKit's JSEP inference issue.
 - The transmission setting supports clean, light-radio, VHF-radio, and muffled-recording effects.
 - Spell the script as it should sound. For example, write `one two four decimal six` rather than `124.6` when that is the desired pronunciation.
 - Synthetic audio can mispronounce callsigns, place names, abbreviations, or numbers. Review every recording.

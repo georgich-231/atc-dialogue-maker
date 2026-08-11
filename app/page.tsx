@@ -9,60 +9,78 @@ import {
   warmVoiceEngine
 } from "../src/audio-worker-client";
 import { makeCloudDialogueAudio, makeCloudVoicePreview } from "../src/azure-speech";
+import { makeElevenLabsVoice } from "../src/elevenlabs-speech";
 import { applyRecordingBed, type RecordingBed } from "../src/recording-bed";
 
 type Role = "atc" | "pilot";
-type VoiceEngine = "local" | "cloud";
+type VoiceEngine = "local" | "azure" | "elevenlabs";
 type EffectName = "clean" | "light" | "vhf" | "muffled";
 type AccentProfile = "native" | "american" | "british" | "scottish" | "caribbean" | "new-york" | "northern" | "west-midlands" | "rp";
 type DialogueLine = { role: Role; text: string };
-type Voice = { id: string; name: string; accent: string; gender: "Male" | "Female" };
+type Voice = {
+  id: string;
+  serviceId: string;
+  name: string;
+  accent: string;
+  gender: "Male" | "Female";
+  engine: VoiceEngine;
+  accentDirection?: string;
+};
 
 const localVoices: Voice[] = [
-  { id: "bm_george", name: "George", accent: "British", gender: "Male" },
-  { id: "bm_fable", name: "Fable", accent: "British", gender: "Male" },
-  { id: "bm_daniel", name: "Daniel", accent: "British", gender: "Male" },
-  { id: "bm_lewis", name: "Lewis", accent: "British", gender: "Male" },
-  { id: "am_michael", name: "Michael", accent: "American", gender: "Male" },
-  { id: "am_fenrir", name: "Fenrir", accent: "American", gender: "Male" },
-  { id: "am_puck", name: "Puck", accent: "American", gender: "Male" },
-  { id: "am_eric", name: "Eric", accent: "American", gender: "Male" },
-  { id: "am_onyx", name: "Onyx", accent: "American", gender: "Male" },
-  { id: "am_liam", name: "Liam", accent: "American", gender: "Male" },
-  { id: "am_adam", name: "Adam", accent: "American", gender: "Male" },
-  { id: "am_echo", name: "Echo", accent: "American", gender: "Male" },
-  { id: "am_santa", name: "Santa", accent: "American", gender: "Male" },
-  { id: "bf_emma", name: "Emma", accent: "British", gender: "Female" },
-  { id: "bf_isabella", name: "Isabella", accent: "British", gender: "Female" },
-  { id: "bf_alice", name: "Alice", accent: "British", gender: "Female" },
-  { id: "bf_lily", name: "Lily", accent: "British", gender: "Female" },
-  { id: "af_heart", name: "Heart", accent: "American", gender: "Female" },
-  { id: "af_bella", name: "Bella", accent: "American", gender: "Female" },
-  { id: "af_alloy", name: "Alloy", accent: "American", gender: "Female" },
-  { id: "af_aoede", name: "Aoede", accent: "American", gender: "Female" },
-  { id: "af_jessica", name: "Jessica", accent: "American", gender: "Female" },
-  { id: "af_kore", name: "Kore", accent: "American", gender: "Female" },
-  { id: "af_nicole", name: "Nicole", accent: "American", gender: "Female" },
-  { id: "af_nova", name: "Nova", accent: "American", gender: "Female" },
-  { id: "af_river", name: "River", accent: "American", gender: "Female" },
-  { id: "af_sarah", name: "Sarah", accent: "American", gender: "Female" },
-  { id: "af_sky", name: "Sky", accent: "American", gender: "Female" }
+  ...[
+    ["bm_george", "George", "British", "Male"], ["bm_fable", "Fable", "British", "Male"],
+    ["bm_daniel", "Daniel", "British", "Male"], ["bm_lewis", "Lewis", "British", "Male"],
+    ["am_michael", "Michael", "American", "Male"], ["am_fenrir", "Fenrir", "American", "Male"],
+    ["am_puck", "Puck", "American", "Male"], ["am_eric", "Eric", "American", "Male"],
+    ["am_onyx", "Onyx", "American", "Male"], ["am_liam", "Liam", "American", "Male"],
+    ["am_adam", "Adam", "American", "Male"], ["am_echo", "Echo", "American", "Male"],
+    ["am_santa", "Santa", "American", "Male"], ["bf_emma", "Emma", "British", "Female"],
+    ["bf_isabella", "Isabella", "British", "Female"], ["bf_alice", "Alice", "British", "Female"],
+    ["bf_lily", "Lily", "British", "Female"], ["af_heart", "Heart", "American", "Female"],
+    ["af_bella", "Bella", "American", "Female"], ["af_alloy", "Alloy", "American", "Female"],
+    ["af_aoede", "Aoede", "American", "Female"], ["af_jessica", "Jessica", "American", "Female"],
+    ["af_kore", "Kore", "American", "Female"], ["af_nicole", "Nicole", "American", "Female"],
+    ["af_nova", "Nova", "American", "Female"], ["af_river", "River", "American", "Female"],
+    ["af_sarah", "Sarah", "American", "Female"], ["af_sky", "Sky", "American", "Female"]
+  ].map(([id, name, accent, gender]) => ({
+    id, serviceId: id, name, accent, gender: gender as "Male" | "Female", engine: "local" as const
+  }))
 ];
 
-const cloudVoices: Voice[] = [
-  { id: "en-IE-ConnorNeural", name: "Connor", accent: "Irish English", gender: "Male" },
-  { id: "en-IE-EmilyNeural", name: "Emily", accent: "Irish English", gender: "Female" },
-  { id: "en-IN-PrabhatNeural", name: "Prabhat", accent: "Indian English", gender: "Male" },
-  { id: "en-IN-NeerjaNeural", name: "Neerja", accent: "Indian English", gender: "Female" },
-  { id: "it-IT-GiuseppeMultilingualNeural", name: "Giuseppe", accent: "Italian English", gender: "Male" },
-  { id: "it-IT-IsabellaNeural", name: "Isabella", accent: "Italian English", gender: "Female" },
-  { id: "ru-RU-DmitryNeural", name: "Dmitry", accent: "Russian English", gender: "Male" },
-  { id: "ru-RU-SvetlanaNeural", name: "Svetlana", accent: "Russian English", gender: "Female" },
-  { id: "de-DE-ConradNeural", name: "Conrad", accent: "German English", gender: "Male" },
-  { id: "de-DE-KatjaNeural", name: "Katja", accent: "German English", gender: "Female" },
-  { id: "bg-BG-BorislavNeural", name: "Borislav", accent: "Bulgarian English", gender: "Male" },
-  { id: "bg-BG-KalinaNeural", name: "Kalina", accent: "Bulgarian English", gender: "Female" }
-];
+const azureVoices: Voice[] = [
+  ["en-IE-ConnorNeural", "Connor", "Irish English", "Male"],
+  ["en-IE-EmilyNeural", "Emily", "Irish English", "Female"],
+  ["en-IN-PrabhatNeural", "Prabhat", "Indian English", "Male"],
+  ["en-IN-NeerjaNeural", "Neerja", "Indian English", "Female"],
+  ["it-IT-GiuseppeMultilingualNeural", "Giuseppe", "Italian English", "Male"],
+  ["it-IT-IsabellaNeural", "Isabella", "Italian English", "Female"],
+  ["de-DE-ConradNeural", "Conrad", "German English", "Male"],
+  ["de-DE-KatjaNeural", "Katja", "German English", "Female"],
+  ["bg-BG-BorislavNeural", "Borislav", "Bulgarian English", "Male"],
+  ["bg-BG-KalinaNeural", "Kalina", "Bulgarian English", "Female"]
+].map(([id, name, accent, gender]) => ({
+  id: `azure:${id}`, serviceId: id, name, accent, gender: gender as "Male" | "Female", engine: "azure" as const
+}));
+
+const elevenLabsVoices: Voice[] = [
+  ["ru", "Russian", "Male", "JBFqnCBsd6RMkjVDRZzb", "[strong Russian accent]"],
+  ["ru", "Russian", "Female", "21m00Tcm4TlvDq8ikWAM", "[strong Russian accent]"],
+  ["de", "German", "Male", "JBFqnCBsd6RMkjVDRZzb", "[strong German accent]"],
+  ["de", "German", "Female", "21m00Tcm4TlvDq8ikWAM", "[strong German accent]"],
+  ["it", "Italian", "Male", "JBFqnCBsd6RMkjVDRZzb", "[strong Italian accent]"],
+  ["it", "Italian", "Female", "21m00Tcm4TlvDq8ikWAM", "[strong Italian accent]"]
+].map(([code, accent, gender, serviceId, accentDirection]) => ({
+  id: `elevenlabs:${code}:${gender.toLowerCase()}`,
+  serviceId,
+  name: gender === "Male" ? "George" : "Rachel",
+  accent: `Strong ${accent} English`,
+  gender: gender as "Male" | "Female",
+  engine: "elevenlabs" as const,
+  accentDirection
+}));
+
+const allVoices = [...localVoices, ...azureVoices, ...elevenLabsVoices];
 
 const accentOptions: { value: AccentProfile; label: string }[] = [
   { value: "native", label: "Voice native accent" },
@@ -101,16 +119,15 @@ const recordingBedCopy: Record<RecordingBed, string> = {
 
 export default function DialogueMaker() {
   const [script, setScript] = useState(sampleScript);
-  const [voiceEngine, setVoiceEngine] = useState<VoiceEngine>("local");
-  const [localAtcVoice, setLocalAtcVoice] = useState("bm_george");
-  const [localPilotVoice, setLocalPilotVoice] = useState("am_michael");
-  const [cloudAtcVoice, setCloudAtcVoice] = useState("en-IE-ConnorNeural");
-  const [cloudPilotVoice, setCloudPilotVoice] = useState("en-IN-NeerjaNeural");
+  const [atcVoiceId, setAtcVoiceId] = useState("bm_george");
+  const [pilotVoiceId, setPilotVoiceId] = useState("am_michael");
   const [atcAccent, setAtcAccent] = useState<AccentProfile>("native");
   const [pilotAccent, setPilotAccent] = useState<AccentProfile>("native");
   const [azureKey, setAzureKey] = useState("");
   const [azureRegion, setAzureRegion] = useState("northeurope");
   const [showAzureKey, setShowAzureKey] = useState(false);
+  const [elevenLabsKey, setElevenLabsKey] = useState("");
+  const [showElevenLabsKey, setShowElevenLabsKey] = useState(false);
   const [atcRate, setAtcRate] = useState(0);
   const [pilotRate, setPilotRate] = useState(0);
   const [pauseMs, setPauseMs] = useState(650);
@@ -122,10 +139,8 @@ export default function DialogueMaker() {
   const [resultUrl, setResultUrl] = useState("");
   const [resultLabel, setResultLabel] = useState("");
   const previewAudio = useRef<HTMLAudioElement | null>(null);
-  const voiceEngineRef = useRef<VoiceEngine>("local");
-  const atcVoice = voiceEngine === "cloud" ? cloudAtcVoice : localAtcVoice;
-  const pilotVoice = voiceEngine === "cloud" ? cloudPilotVoice : localPilotVoice;
-  const availableVoices = voiceEngine === "cloud" ? cloudVoices : localVoices;
+  const atcVoice = allVoices.find((voice) => voice.id === atcVoiceId) ?? localVoices[0];
+  const pilotVoice = allVoices.find((voice) => voice.id === pilotVoiceId) ?? localVoices[4];
 
   const transmissionCount = useMemo(() => {
     return script.split(/\r?\n/).filter((line) => /^(atc|controller|tower|ground|approach|departure|pilot|aircraft|flight)\s*:/i.test(line.trim())).length;
@@ -142,10 +157,11 @@ export default function DialogueMaker() {
       const saved = JSON.parse(localStorage.getItem("atc-dialogue-maker.azure-speech") ?? "null") as { key?: string; region?: string } | null;
       if (saved?.key) setAzureKey(saved.key);
       if (saved?.region) setAzureRegion(saved.region);
-      if (localStorage.getItem("atc-dialogue-maker.voice-engine") === "cloud") {
-        voiceEngineRef.current = "cloud";
-        setVoiceEngine("cloud");
-      }
+      const savedElevenLabsKey = localStorage.getItem("atc-dialogue-maker.elevenlabs-key");
+      if (savedElevenLabsKey) setElevenLabsKey(savedElevenLabsKey);
+      const pair = JSON.parse(localStorage.getItem("atc-dialogue-maker.voice-pair") ?? "null") as { atc?: string; pilot?: string } | null;
+      if (pair?.atc && allVoices.some((voice) => voice.id === pair.atc)) setAtcVoiceId(pair.atc);
+      if (pair?.pilot && allVoices.some((voice) => voice.id === pair.pilot)) setPilotVoiceId(pair.pilot);
     } catch {
       // Invalid device-local settings are ignored.
     }
@@ -153,10 +169,15 @@ export default function DialogueMaker() {
 
   useEffect(() => {
     const unsubscribe = subscribeToEngineStatus(({ message }) => {
-      if (voiceEngineRef.current === "local") setStatus(message);
+      setStatus(message);
     });
     const startWarmup = () => {
-      if (localStorage.getItem("atc-dialogue-maker.voice-engine") === "cloud") return;
+      try {
+        const pair = JSON.parse(localStorage.getItem("atc-dialogue-maker.voice-pair") ?? "null") as { atc?: string; pilot?: string } | null;
+        if (pair && ![pair.atc, pair.pilot].some((id) => localVoices.some((voice) => voice.id === id))) return;
+      } catch {
+        // Warm the default local voices if saved settings cannot be read.
+      }
       void warmVoiceEngine().catch(() => {
         // A button press will retry and surface any useful error.
       });
@@ -181,22 +202,16 @@ export default function DialogueMaker() {
     };
   }, []);
 
-  function changeVoiceEngine(nextEngine: VoiceEngine) {
-    voiceEngineRef.current = nextEngine;
-    setVoiceEngine(nextEngine);
-    localStorage.setItem("atc-dialogue-maker.voice-engine", nextEngine);
-    setError("");
-    setStatus(nextEngine === "cloud" ? "Cloud accents selected." : "Local voice engine selected.");
-  }
-
   function updateAtcVoice(value: string) {
-    if (voiceEngine === "cloud") setCloudAtcVoice(value);
-    else setLocalAtcVoice(value);
+    setAtcVoiceId(value);
+    localStorage.setItem("atc-dialogue-maker.voice-pair", JSON.stringify({ atc: value, pilot: pilotVoiceId }));
+    setError("");
   }
 
   function updatePilotVoice(value: string) {
-    if (voiceEngine === "cloud") setCloudPilotVoice(value);
-    else setLocalPilotVoice(value);
+    setPilotVoiceId(value);
+    localStorage.setItem("atc-dialogue-maker.voice-pair", JSON.stringify({ atc: atcVoiceId, pilot: value }));
+    setError("");
   }
 
   function saveCloudSettings() {
@@ -215,6 +230,32 @@ export default function DialogueMaker() {
     setStatus("Saved cloud settings removed.");
   }
 
+  function saveElevenLabsSettings() {
+    if (!elevenLabsKey.trim()) {
+      setError("Enter the ElevenLabs API key.");
+      return;
+    }
+    localStorage.setItem("atc-dialogue-maker.elevenlabs-key", elevenLabsKey.trim());
+    setError("");
+    setStatus("ElevenLabs settings saved on this device.");
+  }
+
+  function forgetElevenLabsSettings() {
+    localStorage.removeItem("atc-dialogue-maker.elevenlabs-key");
+    setElevenLabsKey("");
+    setStatus("Saved ElevenLabs settings removed.");
+  }
+
+  async function synthesizeVoiceLine(text: string, voice: Voice, speed: number, accent: AccentProfile) {
+    if (voice.engine === "azure") {
+      return makeCloudVoicePreview(text, voice.serviceId, speed, azureKey, azureRegion);
+    }
+    if (voice.engine === "elevenlabs") {
+      return makeElevenLabsVoice(text, voice.serviceId, voice.accentDirection ?? "", speed, elevenLabsKey);
+    }
+    return makeVoicePreview(text, voice.serviceId, speed, accent);
+  }
+
   async function preview(role: Role) {
     setBusy(true);
     setError("");
@@ -224,10 +265,8 @@ export default function DialogueMaker() {
         : "Cleared for takeoff runway two seven, Balkan one two three.";
       const voice = role === "atc" ? atcVoice : pilotVoice;
       const speed = rateToSpeed(role === "atc" ? atcRate : pilotRate);
-      if (voiceEngine === "cloud") setStatus("Generating preview · CLOUD");
-      const generated = voiceEngine === "cloud"
-        ? await makeCloudVoicePreview(previewText, voice, speed, azureKey, azureRegion)
-        : await makeVoicePreview(previewText, voice, speed, role === "atc" ? atcAccent : pilotAccent);
+      setStatus(`Generating preview · ${engineName(voice.engine)}`);
+      const generated = await synthesizeVoiceLine(previewText, voice, speed, role === "atc" ? atcAccent : pilotAccent);
       const filtered = await applyEffect(generated.samples, generated.sampleRate, effect);
       const withRecordingBed = applyRecordingBed(filtered, generated.sampleRate, recordingBed);
       const previewBlob = encodeWav(withRecordingBed, generated.sampleRate);
@@ -251,7 +290,7 @@ export default function DialogueMaker() {
     setError("");
     try {
       const dialogue = parseScript(script);
-      if (atcVoice === pilotVoice) throw new Error("Choose two different voices so the speakers are easy to distinguish.");
+      if (atcVoice.id === pilotVoice.id) throw new Error("Choose two different voices so the speakers are easy to distinguish.");
 
       const requests = dialogue.map((line) => ({
         text: line.text,
@@ -259,15 +298,36 @@ export default function DialogueMaker() {
         speed: rateToSpeed(line.role === "atc" ? atcRate : pilotRate),
         accent: line.role === "atc" ? atcAccent : pilotAccent
       }));
-      if (voiceEngine === "cloud") setStatus("Generating dialogue · CLOUD");
-      const generated = voiceEngine === "cloud"
-        ? await makeCloudDialogueAudio(
-          requests.map(({ text, voice, speed }) => ({ text, voice, speed })),
+      const engines = new Set(requests.map(({ voice }) => voice.engine));
+      if (engines.has("azure") && (!azureKey.trim() || !azureRegion.trim())) {
+        throw new Error("Add the Azure Speech key and region under Voice service settings first.");
+      }
+      if (engines.has("elevenlabs") && !elevenLabsKey.trim()) {
+        throw new Error("Add the ElevenLabs API key under Voice service settings first.");
+      }
+      let generated: { samples: Float32Array; sampleRate: number };
+      if (engines.size === 1 && atcVoice.engine === "local") {
+        generated = await makeDialogueAudio(
+          requests.map(({ text, voice, speed, accent }) => ({ text, voice: voice.serviceId, speed, accent })),
+          pauseMs
+        );
+      } else if (engines.size === 1 && atcVoice.engine === "azure") {
+        setStatus("Generating dialogue · Azure");
+        generated = await makeCloudDialogueAudio(
+          requests.map(({ text, voice, speed }) => ({ text, voice: voice.serviceId, speed })),
           pauseMs,
           azureKey,
           azureRegion
-        )
-        : await makeDialogueAudio(requests, pauseMs);
+        );
+      } else {
+        const clips: { samples: Float32Array; sampleRate: number }[] = [];
+        for (let index = 0; index < requests.length; index += 1) {
+          const request = requests[index];
+          setStatus(`Generating transmission ${index + 1} of ${requests.length} · ${engineName(request.voice.engine)}`);
+          clips.push(await synthesizeVoiceLine(request.text, request.voice, request.speed, request.accent));
+        }
+        generated = joinAudioClips(clips, pauseMs);
+      }
 
       setStatus("Applying radio effect…");
       const filtered = await applyEffect(generated.samples, generated.sampleRate, effect);
@@ -276,7 +336,7 @@ export default function DialogueMaker() {
       if (resultUrl) URL.revokeObjectURL(resultUrl);
       setResultUrl(nextUrl);
       const bedLabel = recordingBed === "none" ? "" : ` · ${recordingBedLabel(recordingBed)}`;
-      const engineLabel = voiceEngine === "cloud" ? "Cloud accents" : "Local voices";
+      const engineLabel = engines.size > 1 ? "Mixed voices" : engineName(atcVoice.engine);
       setResultLabel(`${dialogue.length} transmissions · ${engineLabel} · ${effectLabel(effect)}${bedLabel}`);
       setStatus("Done.");
     } catch (generationError) {
@@ -343,17 +403,15 @@ export default function DialogueMaker() {
           <h2>Voices &amp; effect</h2>
         </div>
 
-        <div className="field-block compact-field engine-picker">
-          <label htmlFor="voice-engine">Voice engine</label>
-          <select id="voice-engine" value={voiceEngine} onChange={(event) => changeVoiceEngine(event.target.value as VoiceEngine)}>
-            <option value="local">Local voices · offline</option>
-            <option value="cloud">Cloud accents</option>
-          </select>
-          <p>{voiceEngine === "cloud" ? "Real regional voices from Microsoft Speech." : "Fast browser voices with no account or key."}</p>
+        <div className="field-block compact-field voice-library-note">
+          <label>Voice library</label>
+          <p>Local, Azure and ElevenLabs voices are together below. Choose any source for each speaker.</p>
         </div>
 
-        {voiceEngine === "cloud" && (
-          <div className="cloud-settings">
+        <div className="service-settings">
+          <details>
+            <summary><span>Azure Speech</span><b>{azureKey ? "Ready" : "Key needed"}</b></summary>
+            <div className="cloud-settings">
             <div className="cloud-input">
               <label htmlFor="azure-key">Azure Speech key</label>
               <div className="key-input-row">
@@ -386,16 +444,43 @@ export default function DialogueMaker() {
               {azureKey && <button type="button" className="quiet" onClick={forgetCloudSettings}>Forget</button>}
             </div>
             <p>Stored only in this browser and sent directly to Microsoft Speech.</p>
-          </div>
-        )}
+            </div>
+          </details>
+
+          <details>
+            <summary><span>ElevenLabs accents</span><b>{elevenLabsKey ? "Ready" : "Key needed"}</b></summary>
+            <div className="cloud-settings elevenlabs-settings">
+              <div className="cloud-input">
+                <label htmlFor="elevenlabs-key">ElevenLabs API key</label>
+                <div className="key-input-row">
+                  <input
+                    id="elevenlabs-key"
+                    type={showElevenLabsKey ? "text" : "password"}
+                    value={elevenLabsKey}
+                    onChange={(event) => setElevenLabsKey(event.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="Restricted text-to-speech key"
+                  />
+                  <button type="button" onClick={() => setShowElevenLabsKey((visible) => !visible)}>{showElevenLabsKey ? "Hide" : "Show"}</button>
+                </div>
+              </div>
+              <div className="settings-actions">
+                <button type="button" onClick={saveElevenLabsSettings}>Save on this device</button>
+                {elevenLabsKey && <button type="button" className="quiet" onClick={forgetElevenLabsSettings}>Forget</button>}
+              </div>
+              <p>Use a TTS-only restricted key with a credit limit. It stays in this browser and is sent directly to ElevenLabs.</p>
+            </div>
+          </details>
+        </div>
 
         <VoiceChoice
           number="1"
           role="Controller"
           color="blue"
-          value={atcVoice}
-          voices={availableVoices}
-          showAccent={voiceEngine === "local"}
+          value={atcVoice.id}
+          voices={allVoices}
+          showAccent={atcVoice.engine === "local"}
           accent={atcAccent}
           rate={atcRate}
           disabled={busy}
@@ -408,9 +493,9 @@ export default function DialogueMaker() {
           number="2"
           role="Pilot"
           color="orange"
-          value={pilotVoice}
-          voices={availableVoices}
-          showAccent={voiceEngine === "local"}
+          value={pilotVoice.id}
+          voices={allVoices}
+          showAccent={pilotVoice.engine === "local"}
           accent={pilotAccent}
           rate={pilotRate}
           disabled={busy}
@@ -454,7 +539,7 @@ export default function DialogueMaker() {
         </div>
       </aside>
 
-      <p className="local-note">{voiceEngine === "cloud" ? "Cloud voices · device-local key" : "Background voice engine · GPU when available"}</p>
+      <p className="local-note">Local, Azure &amp; ElevenLabs voices · mix any two</p>
     </main>
   );
 }
@@ -474,7 +559,7 @@ function VoiceChoice({ number, role, color, value, voices, showAccent, accent, r
   onRate: (value: number) => void;
   onPreview: () => void;
 }) {
-  const voiceGroups = Array.from(new Set(voices.map((voice) => voice.accent)));
+  const voiceGroups = Array.from(new Set(voices.map(voiceGroupLabel)));
   return (
     <div className="voice-choice">
       <div className="role-heading">
@@ -486,7 +571,7 @@ function VoiceChoice({ number, role, color, value, voices, showAccent, accent, r
         <select id={`${role}-voice`} value={value} onChange={(event) => onVoice(event.target.value)}>
           {voiceGroups.map((group) => (
             <optgroup key={group} label={group}>
-              {voices.filter((voice) => voice.accent === group).map((voice) => (
+              {voices.filter((voice) => voiceGroupLabel(voice) === group).map((voice) => (
                 <option key={voice.id} value={voice.id}>{voice.name} · {voice.gender}</option>
               ))}
             </optgroup>
@@ -541,6 +626,44 @@ function parseScript(input: string): DialogueLine[] {
 
 function rateToSpeed(rate: number) {
   return Math.max(0.7, Math.min(1.3, 1 + rate / 100));
+}
+
+function engineName(engine: VoiceEngine) {
+  return { local: "Local", azure: "Azure", elevenlabs: "ElevenLabs" }[engine];
+}
+
+function voiceGroupLabel(voice: Voice) {
+  return `${engineName(voice.engine)} · ${voice.accent}`;
+}
+
+function joinAudioClips(clips: { samples: Float32Array; sampleRate: number }[], pauseMs: number) {
+  const sampleRate = 24_000;
+  const normalized = clips.map((clip) => resampleAudio(clip.samples, clip.sampleRate, sampleRate));
+  const gapLength = Math.round(sampleRate * Math.max(0, pauseMs) / 1000);
+  const totalLength = normalized.reduce((total, samples) => total + samples.length, 0) + gapLength * Math.max(0, normalized.length - 1);
+  const joined = new Float32Array(totalLength);
+  let offset = 0;
+  normalized.forEach((samples, index) => {
+    joined.set(samples, offset);
+    offset += samples.length;
+    if (index < normalized.length - 1) offset += gapLength;
+  });
+  return { samples: joined, sampleRate };
+}
+
+function resampleAudio(samples: Float32Array, fromRate: number, toRate: number) {
+  if (fromRate === toRate) return samples;
+  const length = Math.max(1, Math.round(samples.length * toRate / fromRate));
+  const output = new Float32Array(length);
+  const ratio = fromRate / toRate;
+  for (let index = 0; index < length; index += 1) {
+    const sourcePosition = index * ratio;
+    const left = Math.min(samples.length - 1, Math.floor(sourcePosition));
+    const right = Math.min(samples.length - 1, left + 1);
+    const fraction = sourcePosition - left;
+    output[index] = samples[left] * (1 - fraction) + samples[right] * fraction;
+  }
+  return output;
 }
 
 async function applyEffect(samples: Float32Array, sampleRate: number, effect: EffectName) {

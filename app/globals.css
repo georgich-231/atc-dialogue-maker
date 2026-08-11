@@ -150,6 +150,17 @@ input[type="range"] { width: 100%; accent-color: var(--blue); }
 .field-block p { min-height: 27px; margin: 8px 2px 0; color: #918981; font-size: 9px; line-height: 1.5; }
 .last-field { padding-bottom: 0; }
 .engine-picker { padding-top: 18px; }
+.voice-library-note p { min-height: 0; margin-bottom: 0; }
+.service-settings { display: grid; gap: 8px; margin: -7px 0 20px; }
+.service-settings details { overflow: hidden; border: 1px solid #cbd7ef; border-radius: 13px; background: #f2f6ff; }
+.service-settings summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; color: #59667e; font-size: 10px; font-weight: 800; cursor: pointer; list-style: none; }
+.service-settings summary::-webkit-details-marker { display: none; }
+.service-settings summary::before { content: "+"; width: 15px; color: var(--blue); font-size: 13px; }
+.service-settings details[open] summary::before { content: "−"; }
+.service-settings summary span { flex: 1; }
+.service-settings summary b { color: var(--green); font-size: 8px; letter-spacing: .05em; text-transform: uppercase; }
+.service-settings .cloud-settings { margin: 0; border: 0; border-top: 1px solid #d8e1f2; border-radius: 0; background: rgba(255,255,255,.28); }
+.elevenlabs-settings { border-color: #d8cdea; background: #faf5ff; }
 .cloud-settings { margin: -7px 0 20px; padding: 14px; border: 1px solid #cbd7ef; border-radius: 13px; background: #f2f6ff; }
 .cloud-input + .cloud-input { margin-top: 10px; }
 .cloud-input > label { display: block; margin-bottom: 6px; color: #687287; font-size: 9px; font-weight: 700; }

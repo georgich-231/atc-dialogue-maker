@@ -160,7 +160,6 @@ input[type="range"] { width: 100%; accent-color: var(--blue); }
 .service-settings summary span { flex: 1; }
 .service-settings summary b { color: var(--green); font-size: 8px; letter-spacing: .05em; text-transform: uppercase; }
 .service-settings .cloud-settings { margin: 0; border: 0; border-top: 1px solid #d8e1f2; border-radius: 0; background: rgba(255,255,255,.28); }
-.elevenlabs-settings { border-color: #d8cdea; background: #faf5ff; }
 .cloud-settings { margin: -7px 0 20px; padding: 14px; border: 1px solid #cbd7ef; border-radius: 13px; background: #f2f6ff; }
 .cloud-input + .cloud-input { margin-top: 10px; }
 .cloud-input > label { display: block; margin-bottom: 6px; color: #687287; font-size: 9px; font-weight: 700; }

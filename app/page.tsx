@@ -9,11 +9,10 @@ import {
   warmVoiceEngine
 } from "../src/audio-worker-client";
 import { makeCloudDialogueAudio, makeCloudVoicePreview } from "../src/azure-speech";
-import { listElevenLabsAccountVoices, makeElevenLabsVoice, type ElevenLabsAccountVoice } from "../src/elevenlabs-speech";
 import { applyRecordingBed, type RecordingBed } from "../src/recording-bed";
 
 type Role = "atc" | "pilot";
-type VoiceEngine = "local" | "azure" | "elevenlabs";
+type VoiceEngine = "local" | "azure";
 type EffectName = "clean" | "light" | "vhf" | "muffled";
 type AccentProfile = "native" | "american" | "british" | "scottish" | "caribbean" | "new-york" | "northern" | "west-midlands" | "rp";
 type DialogueLine = { role: Role; text: string };
@@ -22,9 +21,8 @@ type Voice = {
   serviceId: string;
   name: string;
   accent: string;
-  gender: "Male" | "Female" | "Custom";
+  gender: "Male" | "Female";
   engine: VoiceEngine;
-  accentDirection?: string;
 };
 
 const localVoices: Voice[] = [
@@ -49,19 +47,59 @@ const localVoices: Voice[] = [
 ];
 
 const azureVoices: Voice[] = [
+  ["en-US-AndrewNeural", "Andrew", "American English", "Male"],
+  ["en-US-BrianNeural", "Brian", "American English", "Male"],
+  ["en-US-AvaNeural", "Ava", "American English", "Female"],
+  ["en-US-JennyNeural", "Jenny", "American English", "Female"],
+  ["en-GB-RyanNeural", "Ryan", "British English", "Male"],
+  ["en-GB-ThomasNeural", "Thomas", "British English", "Male"],
+  ["en-GB-SoniaNeural", "Sonia", "British English", "Female"],
+  ["en-GB-LibbyNeural", "Libby", "British English", "Female"],
   ["en-IE-ConnorNeural", "Connor", "Irish English", "Male"],
   ["en-IE-EmilyNeural", "Emily", "Irish English", "Female"],
   ["en-IN-PrabhatNeural", "Prabhat", "Indian English", "Male"],
+  ["en-IN-ArjunNeural", "Arjun", "Indian English", "Male"],
+  ["en-IN-KunalNeural", "Kunal", "Indian English", "Male"],
   ["en-IN-NeerjaNeural", "Neerja", "Indian English", "Female"],
+  ["en-IN-AartiNeural", "Aarti", "Indian English", "Female"],
+  ["en-IN-AnanyaNeural", "Ananya", "Indian English", "Female"],
   ["it-IT-GiuseppeMultilingualNeural", "Giuseppe", "Italian English", "Male"],
-  ["it-IT-IsabellaNeural", "Isabella", "Italian English", "Female"],
+  ["it-IT-AlessioMultilingualNeural", "Alessio", "Italian English", "Male"],
+  ["it-IT-MarcelloMultilingualNeural", "Marcello", "Italian English", "Male"],
+  ["it-IT-IsabellaMultilingualNeural", "Isabella", "Italian English", "Female"],
   ["de-DE-ConradNeural", "Conrad", "German English", "Male"],
+  ["de-DE-FlorianMultilingualNeural", "Florian", "German English", "Male"],
   ["de-DE-KatjaNeural", "Katja", "German English", "Female"],
+  ["de-DE-SeraphinaMultilingualNeural", "Seraphina", "German English", "Female"],
   ["bg-BG-BorislavNeural", "Borislav", "Bulgarian English", "Male"],
-  ["bg-BG-KalinaNeural", "Kalina", "Bulgarian English", "Female"]
+  ["bg-BG-KalinaNeural", "Kalina", "Bulgarian English", "Female"],
+  ["en-AU-WilliamNeural", "William", "Australian English", "Male"],
+  ["en-AU-DarrenNeural", "Darren", "Australian English", "Male"],
+  ["en-AU-NatashaNeural", "Natasha", "Australian English", "Female"],
+  ["en-AU-AnnetteNeural", "Annette", "Australian English", "Female"],
+  ["en-CA-LiamNeural", "Liam", "Canadian English", "Male"],
+  ["en-CA-ClaraNeural", "Clara", "Canadian English", "Female"],
+  ["en-NZ-MitchellNeural", "Mitchell", "New Zealand English", "Male"],
+  ["en-NZ-MollyNeural", "Molly", "New Zealand English", "Female"],
+  ["en-ZA-LukeNeural", "Luke", "South African English", "Male"],
+  ["en-ZA-LeahNeural", "Leah", "South African English", "Female"],
+  ["en-HK-SamNeural", "Sam", "Hong Kong English", "Male"],
+  ["en-HK-YanNeural", "Yan", "Hong Kong English", "Female"],
+  ["en-SG-WayneNeural", "Wayne", "Singapore English", "Male"],
+  ["en-SG-LunaNeural", "Luna", "Singapore English", "Female"],
+  ["en-PH-JamesNeural", "James", "Philippine English", "Male"],
+  ["en-PH-RosaNeural", "Rosa", "Philippine English", "Female"],
+  ["en-KE-ChilembaNeural", "Chilemba", "Kenyan English", "Male"],
+  ["en-KE-AsiliaNeural", "Asilia", "Kenyan English", "Female"],
+  ["en-NG-AbeoNeural", "Abeo", "Nigerian English", "Male"],
+  ["en-NG-EzinneNeural", "Ezinne", "Nigerian English", "Female"],
+  ["en-TZ-ElimuNeural", "Elimu", "Tanzanian English", "Male"],
+  ["en-TZ-ImaniNeural", "Imani", "Tanzanian English", "Female"]
 ].map(([id, name, accent, gender]) => ({
   id: `azure:${id}`, serviceId: id, name, accent, gender: gender as "Male" | "Female", engine: "azure" as const
 }));
+
+const allVoices = [...localVoices, ...azureVoices];
 
 const accentOptions: { value: AccentProfile; label: string }[] = [
   { value: "native", label: "Voice native accent" },
@@ -107,9 +145,6 @@ export default function DialogueMaker() {
   const [azureKey, setAzureKey] = useState("");
   const [azureRegion, setAzureRegion] = useState("northeurope");
   const [showAzureKey, setShowAzureKey] = useState(false);
-  const [elevenLabsKey, setElevenLabsKey] = useState("");
-  const [elevenLabsVoices, setElevenLabsVoices] = useState<Voice[]>([]);
-  const [showElevenLabsKey, setShowElevenLabsKey] = useState(false);
   const [atcRate, setAtcRate] = useState(0);
   const [pilotRate, setPilotRate] = useState(0);
   const [pauseMs, setPauseMs] = useState(650);
@@ -121,7 +156,6 @@ export default function DialogueMaker() {
   const [resultUrl, setResultUrl] = useState("");
   const [resultLabel, setResultLabel] = useState("");
   const previewAudio = useRef<HTMLAudioElement | null>(null);
-  const allVoices = useMemo(() => [...localVoices, ...azureVoices, ...elevenLabsVoices], [elevenLabsVoices]);
   const atcVoice = allVoices.find((voice) => voice.id === atcVoiceId) ?? localVoices[0];
   const pilotVoice = allVoices.find((voice) => voice.id === pilotVoiceId) ?? localVoices[4];
 
@@ -140,15 +174,11 @@ export default function DialogueMaker() {
       const saved = JSON.parse(localStorage.getItem("atc-dialogue-maker.azure-speech") ?? "null") as { key?: string; region?: string } | null;
       if (saved?.key) setAzureKey(saved.key);
       if (saved?.region) setAzureRegion(saved.region);
-      const savedElevenLabsKey = localStorage.getItem("atc-dialogue-maker.elevenlabs-key");
-      if (savedElevenLabsKey) setElevenLabsKey(savedElevenLabsKey);
-      const savedElevenLabsVoices = JSON.parse(localStorage.getItem("atc-dialogue-maker.elevenlabs-voices") ?? "[]") as Voice[];
-      const accountVoices = savedElevenLabsVoices.filter(isSavedElevenLabsVoice);
-      setElevenLabsVoices(accountVoices);
-      const availableVoices = [...localVoices, ...azureVoices, ...accountVoices];
+      localStorage.removeItem("atc-dialogue-maker.elevenlabs-key");
+      localStorage.removeItem("atc-dialogue-maker.elevenlabs-voices");
       const pair = JSON.parse(localStorage.getItem("atc-dialogue-maker.voice-pair") ?? "null") as { atc?: string; pilot?: string } | null;
-      if (pair?.atc && availableVoices.some((voice) => voice.id === pair.atc)) setAtcVoiceId(pair.atc);
-      if (pair?.pilot && availableVoices.some((voice) => voice.id === pair.pilot)) setPilotVoiceId(pair.pilot);
+      if (pair?.atc && allVoices.some((voice) => voice.id === pair.atc)) setAtcVoiceId(pair.atc);
+      if (pair?.pilot && allVoices.some((voice) => voice.id === pair.pilot)) setPilotVoiceId(pair.pilot);
     } catch {
       // Invalid device-local settings are ignored.
     }
@@ -217,52 +247,9 @@ export default function DialogueMaker() {
     setStatus("Saved cloud settings removed.");
   }
 
-  async function saveElevenLabsSettings() {
-    if (!elevenLabsKey.trim()) {
-      setError("Enter the ElevenLabs API key.");
-      return;
-    }
-    const key = elevenLabsKey.trim();
-    localStorage.setItem("atc-dialogue-maker.elevenlabs-key", key);
-    setBusy(true);
-    setError("");
-    setStatus("Loading your ElevenLabs voices…");
-    try {
-      const voices = (await listElevenLabsAccountVoices(key)).map(toAppVoice);
-      if (!voices.length) {
-        throw new Error("No designed voices were found. Create a voice with ElevenLabs Voice Design, then load again.");
-      }
-      setElevenLabsVoices(voices);
-      localStorage.setItem("atc-dialogue-maker.elevenlabs-voices", JSON.stringify(voices));
-      setStatus(`${voices.length} ElevenLabs voice${voices.length === 1 ? "" : "s"} loaded.`);
-    } catch (settingsError) {
-      setError(readableError(settingsError));
-      setStatus("ElevenLabs voices were not loaded.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function forgetElevenLabsSettings() {
-    localStorage.removeItem("atc-dialogue-maker.elevenlabs-key");
-    localStorage.removeItem("atc-dialogue-maker.elevenlabs-voices");
-    setElevenLabsKey("");
-    setElevenLabsVoices([]);
-    const nextAtc = atcVoice.engine === "elevenlabs" ? localVoices[0].id : atcVoiceId;
-    const nextPilot = pilotVoice.engine === "elevenlabs" ? localVoices[4].id : pilotVoiceId;
-    setAtcVoiceId(nextAtc);
-    setPilotVoiceId(nextPilot);
-    localStorage.setItem("atc-dialogue-maker.voice-pair", JSON.stringify({ atc: nextAtc, pilot: nextPilot }));
-    setError("");
-    setStatus("Saved ElevenLabs settings and voices removed.");
-  }
-
   async function synthesizeVoiceLine(text: string, voice: Voice, speed: number, accent: AccentProfile) {
     if (voice.engine === "azure") {
       return makeCloudVoicePreview(text, voice.serviceId, speed, azureKey, azureRegion);
-    }
-    if (voice.engine === "elevenlabs") {
-      return makeElevenLabsVoice(text, voice.serviceId, voice.accentDirection ?? "", speed, elevenLabsKey);
     }
     return makeVoicePreview(text, voice.serviceId, speed, accent);
   }
@@ -312,9 +299,6 @@ export default function DialogueMaker() {
       const engines = new Set(requests.map(({ voice }) => voice.engine));
       if (engines.has("azure") && (!azureKey.trim() || !azureRegion.trim())) {
         throw new Error("Add the Azure Speech key and region under Voice service settings first.");
-      }
-      if (engines.has("elevenlabs") && !elevenLabsKey.trim()) {
-        throw new Error("Add the ElevenLabs API key under Voice service settings first.");
       }
       let generated: { samples: Float32Array; sampleRate: number };
       if (engines.size === 1 && atcVoice.engine === "local") {
@@ -416,7 +400,7 @@ export default function DialogueMaker() {
 
         <div className="field-block compact-field voice-library-note">
           <label>Voice library</label>
-          <p>Local, Azure and ElevenLabs voices are together below. Choose any source for each speaker.</p>
+          <p>Local and Azure voices are together below. Choose any voice for each speaker.</p>
         </div>
 
         <div className="service-settings">
@@ -458,31 +442,6 @@ export default function DialogueMaker() {
             </div>
           </details>
 
-          <details>
-            <summary><span>ElevenLabs voices</span><b>{elevenLabsKey ? (elevenLabsVoices.length ? `${elevenLabsVoices.length} loaded` : "Load voices") : "Key needed"}</b></summary>
-            <div className="cloud-settings elevenlabs-settings">
-              <div className="cloud-input">
-                <label htmlFor="elevenlabs-key">ElevenLabs API key</label>
-                <div className="key-input-row">
-                  <input
-                    id="elevenlabs-key"
-                    type={showElevenLabsKey ? "text" : "password"}
-                    value={elevenLabsKey}
-                    onChange={(event) => setElevenLabsKey(event.target.value)}
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder="Restricted API key"
-                  />
-                  <button type="button" onClick={() => setShowElevenLabsKey((visible) => !visible)}>{showElevenLabsKey ? "Hide" : "Show"}</button>
-                </div>
-              </div>
-              <div className="settings-actions">
-                <button type="button" disabled={busy} onClick={saveElevenLabsSettings}>{elevenLabsVoices.length ? "Refresh my voices" : "Save & load my voices"}</button>
-                {elevenLabsKey && <button type="button" className="quiet" onClick={forgetElevenLabsSettings}>Forget</button>}
-              </div>
-              <p>Free accounts can use voices made with Voice Design, not public library voices. Give the restricted key Text to Speech access and Voices: Read. The key stays in this browser.</p>
-            </div>
-          </details>
         </div>
 
         <VoiceChoice
@@ -550,7 +509,7 @@ export default function DialogueMaker() {
         </div>
       </aside>
 
-      <p className="local-note">Local, Azure &amp; ElevenLabs voices · mix any two</p>
+      <p className="local-note">Local &amp; Azure voices · mix any two</p>
     </main>
   );
 }
@@ -640,39 +599,11 @@ function rateToSpeed(rate: number) {
 }
 
 function engineName(engine: VoiceEngine) {
-  return { local: "Local", azure: "Azure", elevenlabs: "ElevenLabs" }[engine];
+  return { local: "Local", azure: "Azure" }[engine];
 }
 
 function voiceGroupLabel(voice: Voice) {
   return `${engineName(voice.engine)} · ${voice.accent}`;
-}
-
-function toAppVoice(voice: ElevenLabsAccountVoice): Voice {
-  return {
-    id: `elevenlabs:${voice.voiceId}`,
-    serviceId: voice.voiceId,
-    name: voice.name,
-    accent: "My designed voices",
-    gender: normalizeGender(voice.gender),
-    engine: "elevenlabs"
-  };
-}
-
-function normalizeGender(gender?: string): Voice["gender"] {
-  if (/female/i.test(gender ?? "")) return "Female";
-  if (/male/i.test(gender ?? "")) return "Male";
-  return "Custom";
-}
-
-function isSavedElevenLabsVoice(voice: Voice) {
-  return Boolean(
-    voice &&
-    voice.engine === "elevenlabs" &&
-    typeof voice.id === "string" &&
-    voice.id.startsWith("elevenlabs:") &&
-    typeof voice.serviceId === "string" &&
-    typeof voice.name === "string"
-  );
 }
 
 function joinAudioClips(clips: { samples: Float32Array; sampleRate: number }[], pauseMs: number) {

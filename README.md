@@ -30,10 +30,9 @@ The aliases `CONTROLLER`, `TOWER`, `GROUND`, `APPROACH`, and `DEPARTURE` are als
 - The voice engine and MP3 encoder run in a background worker. Compatible desktop browsers use WebGPU acceleration, with a WASM fallback.
 - iPhone and iPad browsers use the standard single-threaded WASM runtime to avoid WebKit's JSEP inference issue.
 - The transmission setting supports clean, light-radio, VHF-radio, and muffled-recording effects.
-- Local, Azure, and ElevenLabs voices share one picker for each speaker, so a dialogue can mix any two engines.
-- Azure adds Irish, Indian, Italian, German, and Bulgarian English voices. ElevenLabs account voices created with Voice Design can be loaded into the same speaker pickers.
+- Local and Azure voices share one picker for each speaker, so a dialogue can mix either engine.
+- Azure adds American, British, Irish, Indian, Italian, German, Bulgarian, Australian, Canadian, New Zealand, South African, Hong Kong, Singapore, Philippine, Kenyan, Nigerian, and Tanzanian English choices.
 - Azure Speech credentials are entered in the page and saved only in that browser's local storage. They are sent directly to Microsoft Speech and are not included in the site code.
-- The optional ElevenLabs key is also stored only in that browser. A restricted key with Text to Speech access, Voices read access, and a credit limit is recommended. Free ElevenLabs API accounts cannot use public Voice Library voices, so the app loads only voices owned by the account.
 - A separate recording-sound control can add receiver hiss, VHF static, weak-signal noise, or old-recorder ambience across the full recording, including reply gaps.
 - Spell the script as it should sound. For example, write `one two four decimal six` rather than `124.6` when that is the desired pronunciation.
 - Synthetic audio can mispronounce callsigns, place names, abbreviations, or numbers. Review every recording.

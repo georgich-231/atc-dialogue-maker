@@ -57,7 +57,11 @@ const cloudVoices: Voice[] = [
   { id: "it-IT-GiuseppeMultilingualNeural", name: "Giuseppe", accent: "Italian English", gender: "Male" },
   { id: "it-IT-IsabellaNeural", name: "Isabella", accent: "Italian English", gender: "Female" },
   { id: "ru-RU-DmitryNeural", name: "Dmitry", accent: "Russian English", gender: "Male" },
-  { id: "ru-RU-SvetlanaNeural", name: "Svetlana", accent: "Russian English", gender: "Female" }
+  { id: "ru-RU-SvetlanaNeural", name: "Svetlana", accent: "Russian English", gender: "Female" },
+  { id: "de-DE-ConradNeural", name: "Conrad", accent: "German English", gender: "Male" },
+  { id: "de-DE-KatjaNeural", name: "Katja", accent: "German English", gender: "Female" },
+  { id: "bg-BG-BorislavNeural", name: "Borislav", accent: "Bulgarian English", gender: "Male" },
+  { id: "bg-BG-KalinaNeural", name: "Kalina", accent: "Bulgarian English", gender: "Female" }
 ];
 
 const accentOptions: { value: AccentProfile; label: string }[] = [
@@ -105,7 +109,7 @@ export default function DialogueMaker() {
   const [atcAccent, setAtcAccent] = useState<AccentProfile>("native");
   const [pilotAccent, setPilotAccent] = useState<AccentProfile>("native");
   const [azureKey, setAzureKey] = useState("");
-  const [azureRegion, setAzureRegion] = useState("westeurope");
+  const [azureRegion, setAzureRegion] = useState("northeurope");
   const [showAzureKey, setShowAzureKey] = useState(false);
   const [atcRate, setAtcRate] = useState(0);
   const [pilotRate, setPilotRate] = useState(0);
@@ -343,7 +347,7 @@ export default function DialogueMaker() {
           <label htmlFor="voice-engine">Voice engine</label>
           <select id="voice-engine" value={voiceEngine} onChange={(event) => changeVoiceEngine(event.target.value as VoiceEngine)}>
             <option value="local">Local voices · offline</option>
-            <option value="cloud">Cloud accents · Irish, Indian, Italian, Russian</option>
+            <option value="cloud">Cloud accents</option>
           </select>
           <p>{voiceEngine === "cloud" ? "Real regional voices from Microsoft Speech." : "Fast browser voices with no account or key."}</p>
         </div>
@@ -374,7 +378,7 @@ export default function DialogueMaker() {
                 onChange={(event) => setAzureRegion(event.target.value)}
                 autoCapitalize="none"
                 spellCheck={false}
-                placeholder="westeurope"
+                placeholder="northeurope"
               />
             </div>
             <div className="settings-actions">

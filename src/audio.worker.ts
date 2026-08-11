@@ -188,10 +188,7 @@ const accentLanguages: Record<string, string> = {
   "new-york": "en-us-nyc",
   northern: "en-gb-x-gbclan",
   "west-midlands": "en-gb-x-gbcwmd",
-  rp: "en-gb-x-rp",
-  irish: "en-gb-scotland",
-  indian: "en",
-  italian: "en"
+  rp: "en-gb-x-rp"
 };
 
 async function generateSpeech(model: any, text: string, voice: string, speed: number, accent = "native") {
@@ -206,24 +203,11 @@ async function generateSpeech(model: any, text: string, voice: string, speed: nu
     return (await phonemize(section, language)).join(" ");
   }));
 
-  let phonemes = phonemeSections.join("")
+  const phonemes = phonemeSections.join("")
     .replace(/ʲ/g, "j")
     .replace(/r/g, "ɹ")
     .replace(/x/g, "k")
     .replace(/ɬ/g, "l");
-
-  if (accent === "irish") {
-    phonemes = phonemes.replace(/θ/g, "t̪").replace(/ð/g, "d̪").replace(/ʉː/g, "uː");
-  } else if (accent === "indian") {
-    phonemes = phonemes.replace(/θ/g, "t̪").replace(/ð/g, "d̪");
-  } else if (accent === "italian") {
-    phonemes = phonemes
-      .replace(/θ/g, "t")
-      .replace(/ð/g, "d")
-      .replace(/ɹ/g, "ɾ")
-      .replace(/əʊ/g, "oː")
-      .replace(/eɪ/g, "eː");
-  }
 
   const { input_ids } = model.tokenizer(phonemes.trim(), { truncation: true });
   return model.generate_from_ids(input_ids, { voice, speed }) as Promise<GeneratedAudio>;

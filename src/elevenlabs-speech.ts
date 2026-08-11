@@ -3,6 +3,48 @@ export type ElevenLabsAudioResult = {
   sampleRate: number;
 };
 
+export type ElevenLabsAccountVoice = {
+  voiceId: string;
+  name: string;
+  accent?: string;
+  gender?: string;
+};
+
+type ElevenLabsVoiceResponse = {
+  voices?: Array<{
+    voice_id?: string;
+    name?: string;
+    category?: string;
+    is_owner?: boolean;
+    labels?: Record<string, string>;
+  }>;
+};
+
+export async function listElevenLabsAccountVoices(key: string): Promise<ElevenLabsAccountVoice[]> {
+  if (!key.trim()) throw new Error("Enter the ElevenLabs API key first.");
+
+  let response: Response;
+  try {
+    response = await fetch("https://api.elevenlabs.io/v1/voices", {
+      headers: { "xi-api-key": key.trim() }
+    });
+  } catch {
+    throw new Error("ElevenLabs could not connect. Check the internet connection and try again.");
+  }
+
+  if (!response.ok) throw await friendlyElevenLabsError(response, "voices");
+  const body = await response.json() as ElevenLabsVoiceResponse;
+  return (body.voices ?? [])
+    .filter((voice) => voice.is_owner === true || voice.category === "generated")
+    .filter((voice): voice is typeof voice & { voice_id: string } => Boolean(voice.voice_id))
+    .map((voice) => ({
+      voiceId: voice.voice_id,
+      name: voice.name?.trim() || "Designed voice",
+      accent: voice.labels?.accent,
+      gender: voice.labels?.gender
+    }));
+}
+
 export async function makeElevenLabsVoice(
   text: string,
   voiceId: string,
@@ -23,7 +65,7 @@ export async function makeElevenLabsVoice(
           "xi-api-key": key.trim()
         },
         body: JSON.stringify({
-          text: `${accentDirection} ${text}`,
+          text: accentDirection ? `${accentDirection} ${text}` : text,
           model_id: "eleven_v3",
           language_code: "en",
           voice_settings: {
@@ -40,7 +82,7 @@ export async function makeElevenLabsVoice(
     throw new Error("ElevenLabs could not connect. Check the internet connection and try again.");
   }
 
-  if (!response.ok) throw await friendlyElevenLabsError(response);
+  if (!response.ok) throw await friendlyElevenLabsError(response, "speech");
   const encodedAudio = await response.arrayBuffer();
   return decodeBrowserAudio(encodedAudio);
 }
@@ -62,7 +104,7 @@ async function decodeBrowserAudio(encodedAudio: ArrayBuffer): Promise<ElevenLabs
   }
 }
 
-async function friendlyElevenLabsError(response: Response) {
+async function friendlyElevenLabsError(response: Response, request: "speech" | "voices") {
   let details = "";
   try {
     const body = await response.json() as { detail?: string | { message?: string } };
@@ -71,8 +113,13 @@ async function friendlyElevenLabsError(response: Response) {
     // The status-specific message below is enough when no JSON body is returned.
   }
 
+  if (/free users cannot use library voices/i.test(details)) {
+    return new Error("That is a public ElevenLabs library voice. Free accounts can use their own designed voices through the API; load one under ElevenLabs settings.");
+  }
   if (response.status === 401 || response.status === 403) {
-    return new Error("The ElevenLabs key was rejected or does not have text-to-speech access.");
+    return new Error(request === "voices"
+      ? "The ElevenLabs key was rejected or cannot read voices. Give the key Voices: Read access, then try again."
+      : "The ElevenLabs key was rejected or does not have Text to Speech access.");
   }
   if (response.status === 429 || /quota|credit|limit/i.test(details)) {
     return new Error("The ElevenLabs monthly credits or request limit has been reached.");

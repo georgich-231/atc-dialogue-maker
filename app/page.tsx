@@ -9,7 +9,7 @@ import {
   warmVoiceEngine
 } from "../src/audio-worker-client";
 import { makeCloudDialogueAudio, makeCloudVoicePreview } from "../src/azure-speech";
-import { makeElevenLabsVoice } from "../src/elevenlabs-speech";
+import { listElevenLabsAccountVoices, makeElevenLabsVoice, type ElevenLabsAccountVoice } from "../src/elevenlabs-speech";
 import { applyRecordingBed, type RecordingBed } from "../src/recording-bed";
 
 type Role = "atc" | "pilot";
@@ -22,7 +22,7 @@ type Voice = {
   serviceId: string;
   name: string;
   accent: string;
-  gender: "Male" | "Female";
+  gender: "Male" | "Female" | "Custom";
   engine: VoiceEngine;
   accentDirection?: string;
 };
@@ -62,25 +62,6 @@ const azureVoices: Voice[] = [
 ].map(([id, name, accent, gender]) => ({
   id: `azure:${id}`, serviceId: id, name, accent, gender: gender as "Male" | "Female", engine: "azure" as const
 }));
-
-const elevenLabsVoices: Voice[] = [
-  ["ru", "Russian", "Male", "JBFqnCBsd6RMkjVDRZzb", "[strong Russian accent]"],
-  ["ru", "Russian", "Female", "21m00Tcm4TlvDq8ikWAM", "[strong Russian accent]"],
-  ["de", "German", "Male", "JBFqnCBsd6RMkjVDRZzb", "[strong German accent]"],
-  ["de", "German", "Female", "21m00Tcm4TlvDq8ikWAM", "[strong German accent]"],
-  ["it", "Italian", "Male", "JBFqnCBsd6RMkjVDRZzb", "[strong Italian accent]"],
-  ["it", "Italian", "Female", "21m00Tcm4TlvDq8ikWAM", "[strong Italian accent]"]
-].map(([code, accent, gender, serviceId, accentDirection]) => ({
-  id: `elevenlabs:${code}:${gender.toLowerCase()}`,
-  serviceId,
-  name: gender === "Male" ? "George" : "Rachel",
-  accent: `Strong ${accent} English`,
-  gender: gender as "Male" | "Female",
-  engine: "elevenlabs" as const,
-  accentDirection
-}));
-
-const allVoices = [...localVoices, ...azureVoices, ...elevenLabsVoices];
 
 const accentOptions: { value: AccentProfile; label: string }[] = [
   { value: "native", label: "Voice native accent" },
@@ -127,6 +108,7 @@ export default function DialogueMaker() {
   const [azureRegion, setAzureRegion] = useState("northeurope");
   const [showAzureKey, setShowAzureKey] = useState(false);
   const [elevenLabsKey, setElevenLabsKey] = useState("");
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<Voice[]>([]);
   const [showElevenLabsKey, setShowElevenLabsKey] = useState(false);
   const [atcRate, setAtcRate] = useState(0);
   const [pilotRate, setPilotRate] = useState(0);
@@ -139,6 +121,7 @@ export default function DialogueMaker() {
   const [resultUrl, setResultUrl] = useState("");
   const [resultLabel, setResultLabel] = useState("");
   const previewAudio = useRef<HTMLAudioElement | null>(null);
+  const allVoices = useMemo(() => [...localVoices, ...azureVoices, ...elevenLabsVoices], [elevenLabsVoices]);
   const atcVoice = allVoices.find((voice) => voice.id === atcVoiceId) ?? localVoices[0];
   const pilotVoice = allVoices.find((voice) => voice.id === pilotVoiceId) ?? localVoices[4];
 
@@ -159,9 +142,13 @@ export default function DialogueMaker() {
       if (saved?.region) setAzureRegion(saved.region);
       const savedElevenLabsKey = localStorage.getItem("atc-dialogue-maker.elevenlabs-key");
       if (savedElevenLabsKey) setElevenLabsKey(savedElevenLabsKey);
+      const savedElevenLabsVoices = JSON.parse(localStorage.getItem("atc-dialogue-maker.elevenlabs-voices") ?? "[]") as Voice[];
+      const accountVoices = savedElevenLabsVoices.filter(isSavedElevenLabsVoice);
+      setElevenLabsVoices(accountVoices);
+      const availableVoices = [...localVoices, ...azureVoices, ...accountVoices];
       const pair = JSON.parse(localStorage.getItem("atc-dialogue-maker.voice-pair") ?? "null") as { atc?: string; pilot?: string } | null;
-      if (pair?.atc && allVoices.some((voice) => voice.id === pair.atc)) setAtcVoiceId(pair.atc);
-      if (pair?.pilot && allVoices.some((voice) => voice.id === pair.pilot)) setPilotVoiceId(pair.pilot);
+      if (pair?.atc && availableVoices.some((voice) => voice.id === pair.atc)) setAtcVoiceId(pair.atc);
+      if (pair?.pilot && availableVoices.some((voice) => voice.id === pair.pilot)) setPilotVoiceId(pair.pilot);
     } catch {
       // Invalid device-local settings are ignored.
     }
@@ -230,20 +217,44 @@ export default function DialogueMaker() {
     setStatus("Saved cloud settings removed.");
   }
 
-  function saveElevenLabsSettings() {
+  async function saveElevenLabsSettings() {
     if (!elevenLabsKey.trim()) {
       setError("Enter the ElevenLabs API key.");
       return;
     }
-    localStorage.setItem("atc-dialogue-maker.elevenlabs-key", elevenLabsKey.trim());
+    const key = elevenLabsKey.trim();
+    localStorage.setItem("atc-dialogue-maker.elevenlabs-key", key);
+    setBusy(true);
     setError("");
-    setStatus("ElevenLabs settings saved on this device.");
+    setStatus("Loading your ElevenLabs voices…");
+    try {
+      const voices = (await listElevenLabsAccountVoices(key)).map(toAppVoice);
+      if (!voices.length) {
+        throw new Error("No designed voices were found. Create a voice with ElevenLabs Voice Design, then load again.");
+      }
+      setElevenLabsVoices(voices);
+      localStorage.setItem("atc-dialogue-maker.elevenlabs-voices", JSON.stringify(voices));
+      setStatus(`${voices.length} ElevenLabs voice${voices.length === 1 ? "" : "s"} loaded.`);
+    } catch (settingsError) {
+      setError(readableError(settingsError));
+      setStatus("ElevenLabs voices were not loaded.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function forgetElevenLabsSettings() {
     localStorage.removeItem("atc-dialogue-maker.elevenlabs-key");
+    localStorage.removeItem("atc-dialogue-maker.elevenlabs-voices");
     setElevenLabsKey("");
-    setStatus("Saved ElevenLabs settings removed.");
+    setElevenLabsVoices([]);
+    const nextAtc = atcVoice.engine === "elevenlabs" ? localVoices[0].id : atcVoiceId;
+    const nextPilot = pilotVoice.engine === "elevenlabs" ? localVoices[4].id : pilotVoiceId;
+    setAtcVoiceId(nextAtc);
+    setPilotVoiceId(nextPilot);
+    localStorage.setItem("atc-dialogue-maker.voice-pair", JSON.stringify({ atc: nextAtc, pilot: nextPilot }));
+    setError("");
+    setStatus("Saved ElevenLabs settings and voices removed.");
   }
 
   async function synthesizeVoiceLine(text: string, voice: Voice, speed: number, accent: AccentProfile) {
@@ -448,7 +459,7 @@ export default function DialogueMaker() {
           </details>
 
           <details>
-            <summary><span>ElevenLabs accents</span><b>{elevenLabsKey ? "Ready" : "Key needed"}</b></summary>
+            <summary><span>ElevenLabs voices</span><b>{elevenLabsKey ? (elevenLabsVoices.length ? `${elevenLabsVoices.length} loaded` : "Load voices") : "Key needed"}</b></summary>
             <div className="cloud-settings elevenlabs-settings">
               <div className="cloud-input">
                 <label htmlFor="elevenlabs-key">ElevenLabs API key</label>
@@ -460,16 +471,16 @@ export default function DialogueMaker() {
                     onChange={(event) => setElevenLabsKey(event.target.value)}
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder="Restricted text-to-speech key"
+                    placeholder="Restricted API key"
                   />
                   <button type="button" onClick={() => setShowElevenLabsKey((visible) => !visible)}>{showElevenLabsKey ? "Hide" : "Show"}</button>
                 </div>
               </div>
               <div className="settings-actions">
-                <button type="button" onClick={saveElevenLabsSettings}>Save on this device</button>
+                <button type="button" disabled={busy} onClick={saveElevenLabsSettings}>{elevenLabsVoices.length ? "Refresh my voices" : "Save & load my voices"}</button>
                 {elevenLabsKey && <button type="button" className="quiet" onClick={forgetElevenLabsSettings}>Forget</button>}
               </div>
-              <p>Use a TTS-only restricted key with a credit limit. It stays in this browser and is sent directly to ElevenLabs.</p>
+              <p>Free accounts can use voices made with Voice Design, not public library voices. Give the restricted key Text to Speech access and Voices: Read. The key stays in this browser.</p>
             </div>
           </details>
         </div>
@@ -634,6 +645,34 @@ function engineName(engine: VoiceEngine) {
 
 function voiceGroupLabel(voice: Voice) {
   return `${engineName(voice.engine)} · ${voice.accent}`;
+}
+
+function toAppVoice(voice: ElevenLabsAccountVoice): Voice {
+  return {
+    id: `elevenlabs:${voice.voiceId}`,
+    serviceId: voice.voiceId,
+    name: voice.name,
+    accent: "My designed voices",
+    gender: normalizeGender(voice.gender),
+    engine: "elevenlabs"
+  };
+}
+
+function normalizeGender(gender?: string): Voice["gender"] {
+  if (/female/i.test(gender ?? "")) return "Female";
+  if (/male/i.test(gender ?? "")) return "Male";
+  return "Custom";
+}
+
+function isSavedElevenLabsVoice(voice: Voice) {
+  return Boolean(
+    voice &&
+    voice.engine === "elevenlabs" &&
+    typeof voice.id === "string" &&
+    voice.id.startsWith("elevenlabs:") &&
+    typeof voice.serviceId === "string" &&
+    typeof voice.name === "string"
+  );
 }
 
 function joinAudioClips(clips: { samples: Float32Array; sampleRate: number }[], pauseMs: number) {

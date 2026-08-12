@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 
+const title = "ATC Dialogue Studio";
+const description = "Controller and pilot dialogue recordings with radio character and MP3 export.";
+
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost";
@@ -9,17 +12,17 @@ export async function generateMetadata(): Promise<Metadata> {
   const baseUrl = `${protocol}://${host}`;
 
   return {
-    title: "ATC Dialogue Maker",
-    description: "Two-voice ATC dialogue generation with radio effects and MP3 export.",
+    title,
+    description,
     openGraph: {
-      title: "ATC Dialogue Maker",
-      description: "Two voices. Radio effects. MP3 export.",
+      title,
+      description,
       images: [`${baseUrl}/og.png`]
     },
     twitter: {
       card: "summary_large_image",
-      title: "ATC Dialogue Maker",
-      description: "Two voices. Radio effects. MP3 export.",
+      title,
+      description,
       images: [`${baseUrl}/og.png`]
     }
   };
@@ -28,6 +31,15 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        <meta name="theme-color" content="#ffffff" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   makeDialogueAudio,
   makeMp3,
@@ -10,158 +10,111 @@ import {
 } from "../src/audio-worker-client";
 import { makeCloudDialogueAudio, makeCloudVoicePreview } from "../src/azure-speech";
 import { applyRecordingBed, type RecordingBed } from "../src/recording-bed";
+import { applyEffect, encodeWav, joinAudioClips } from "../src/audio-mix";
+import {
+  allVoices,
+  bedOptions,
+  effectOptions,
+  engineName,
+  estimateSeconds,
+  fileSlug,
+  findVoice,
+  formatClock,
+  gapOptions,
+  localVoices,
+  maxCharacters,
+  maxTransmissions,
+  newTransmission,
+  oppositeRole,
+  parseScriptText,
+  rateToSpeed,
+  readableError,
+  sampleTransmissions,
+  serializeTransmissions,
+  type AccentProfile,
+  type EffectName,
+  type Role,
+  type Transmission,
+  type Voice
+} from "../src/dialogue";
+import { TransmissionStrip } from "./components/TransmissionStrip";
+import { VoiceChannel } from "./components/VoiceChannel";
+import { DownloadIcon, PlusIcon, StudioMark } from "./components/icons";
 
-type Role = "atc" | "pilot";
-type VoiceEngine = "local" | "azure";
-type EffectName = "clean" | "light" | "vhf" | "muffled";
-type AccentProfile = "native" | "american" | "british" | "scottish" | "caribbean" | "new-york" | "northern" | "west-midlands" | "rp";
-type DialogueLine = { role: Role; text: string };
-type Voice = {
-  id: string;
-  serviceId: string;
-  name: string;
-  accent: string;
-  gender: "Male" | "Female";
-  engine: VoiceEngine;
+type EditorMode = "strips" | "text";
+type SavedDraft = {
+  title?: string;
+  transmissions?: { role?: Role; text?: string }[];
+  atcVoiceId?: string;
+  pilotVoiceId?: string;
+  atcAccent?: AccentProfile;
+  pilotAccent?: AccentProfile;
+  atcRate?: number;
+  pilotRate?: number;
+  pauseMs?: number;
+  effect?: EffectName;
+  recordingBed?: RecordingBed;
 };
 
-const localVoices: Voice[] = [
-  ...[
-    ["bm_george", "George", "British", "Male"], ["bm_fable", "Fable", "British", "Male"],
-    ["bm_daniel", "Daniel", "British", "Male"], ["bm_lewis", "Lewis", "British", "Male"],
-    ["am_michael", "Michael", "American", "Male"], ["am_fenrir", "Fenrir", "American", "Male"],
-    ["am_puck", "Puck", "American", "Male"], ["am_eric", "Eric", "American", "Male"],
-    ["am_onyx", "Onyx", "American", "Male"], ["am_liam", "Liam", "American", "Male"],
-    ["am_adam", "Adam", "American", "Male"], ["am_echo", "Echo", "American", "Male"],
-    ["am_santa", "Santa", "American", "Male"], ["bf_emma", "Emma", "British", "Female"],
-    ["bf_isabella", "Isabella", "British", "Female"], ["bf_alice", "Alice", "British", "Female"],
-    ["bf_lily", "Lily", "British", "Female"], ["af_heart", "Heart", "American", "Female"],
-    ["af_bella", "Bella", "American", "Female"], ["af_alloy", "Alloy", "American", "Female"],
-    ["af_aoede", "Aoede", "American", "Female"], ["af_jessica", "Jessica", "American", "Female"],
-    ["af_kore", "Kore", "American", "Female"], ["af_nicole", "Nicole", "American", "Female"],
-    ["af_nova", "Nova", "American", "Female"], ["af_river", "River", "American", "Female"],
-    ["af_sarah", "Sarah", "American", "Female"], ["af_sky", "Sky", "American", "Female"]
-  ].map(([id, name, accent, gender]) => ({
-    id, serviceId: id, name, accent, gender: gender as "Male" | "Female", engine: "local" as const
-  }))
-];
+const draftKey = "atc-dialogue-studio.draft";
+const azureKeyName = "atc-dialogue-maker.azure-speech";
+const legacyVoicePairKey = "atc-dialogue-maker.voice-pair";
 
-const azureVoices: Voice[] = [
-  ["en-US-AndrewNeural", "Andrew", "American English", "Male"],
-  ["en-US-BrianNeural", "Brian", "American English", "Male"],
-  ["en-US-AvaNeural", "Ava", "American English", "Female"],
-  ["en-US-JennyNeural", "Jenny", "American English", "Female"],
-  ["en-GB-RyanNeural", "Ryan", "British English", "Male"],
-  ["en-GB-ThomasNeural", "Thomas", "British English", "Male"],
-  ["en-GB-SoniaNeural", "Sonia", "British English", "Female"],
-  ["en-GB-LibbyNeural", "Libby", "British English", "Female"],
-  ["en-IE-ConnorNeural", "Connor", "Irish English", "Male"],
-  ["en-IE-EmilyNeural", "Emily", "Irish English", "Female"],
-  ["en-IN-PrabhatNeural", "Prabhat", "Indian English", "Male"],
-  ["en-IN-ArjunNeural", "Arjun", "Indian English", "Male"],
-  ["en-IN-KunalNeural", "Kunal", "Indian English", "Male"],
-  ["en-IN-NeerjaNeural", "Neerja", "Indian English", "Female"],
-  ["en-IN-AartiNeural", "Aarti", "Indian English", "Female"],
-  ["en-IN-AnanyaNeural", "Ananya", "Indian English", "Female"],
-  ["it-IT-GiuseppeMultilingualNeural", "Giuseppe", "Italian English", "Male"],
-  ["it-IT-AlessioMultilingualNeural", "Alessio", "Italian English", "Male"],
-  ["it-IT-MarcelloMultilingualNeural", "Marcello", "Italian English", "Male"],
-  ["it-IT-IsabellaMultilingualNeural", "Isabella", "Italian English", "Female"],
-  ["de-DE-ConradNeural", "Conrad", "German English", "Male"],
-  ["de-DE-FlorianMultilingualNeural", "Florian", "German English", "Male"],
-  ["de-DE-KatjaNeural", "Katja", "German English", "Female"],
-  ["de-DE-SeraphinaMultilingualNeural", "Seraphina", "German English", "Female"],
-  ["bg-BG-BorislavNeural", "Borislav", "Bulgarian English", "Male"],
-  ["bg-BG-KalinaNeural", "Kalina", "Bulgarian English", "Female"],
-  ["en-AU-WilliamNeural", "William", "Australian English", "Male"],
-  ["en-AU-DarrenNeural", "Darren", "Australian English", "Male"],
-  ["en-AU-NatashaNeural", "Natasha", "Australian English", "Female"],
-  ["en-AU-AnnetteNeural", "Annette", "Australian English", "Female"],
-  ["en-CA-LiamNeural", "Liam", "Canadian English", "Male"],
-  ["en-CA-ClaraNeural", "Clara", "Canadian English", "Female"],
-  ["en-NZ-MitchellNeural", "Mitchell", "New Zealand English", "Male"],
-  ["en-NZ-MollyNeural", "Molly", "New Zealand English", "Female"],
-  ["en-ZA-LukeNeural", "Luke", "South African English", "Male"],
-  ["en-ZA-LeahNeural", "Leah", "South African English", "Female"],
-  ["en-HK-SamNeural", "Sam", "Hong Kong English", "Male"],
-  ["en-HK-YanNeural", "Yan", "Hong Kong English", "Female"],
-  ["en-SG-WayneNeural", "Wayne", "Singapore English", "Male"],
-  ["en-SG-LunaNeural", "Luna", "Singapore English", "Female"],
-  ["en-PH-JamesNeural", "James", "Philippine English", "Male"],
-  ["en-PH-RosaNeural", "Rosa", "Philippine English", "Female"],
-  ["en-KE-ChilembaNeural", "Chilemba", "Kenyan English", "Male"],
-  ["en-KE-AsiliaNeural", "Asilia", "Kenyan English", "Female"],
-  ["en-NG-AbeoNeural", "Abeo", "Nigerian English", "Male"],
-  ["en-NG-EzinneNeural", "Ezinne", "Nigerian English", "Female"],
-  ["en-TZ-ElimuNeural", "Elimu", "Tanzanian English", "Male"],
-  ["en-TZ-ImaniNeural", "Imani", "Tanzanian English", "Female"]
-].map(([id, name, accent, gender]) => ({
-  id: `azure:${id}`, serviceId: id, name, accent, gender: gender as "Male" | "Female", engine: "azure" as const
-}));
+export default function DialogueStudio() {
+  const [title, setTitle] = useState("Sofia Tower · departure");
+  const [transmissions, setTransmissions] = useState<Transmission[]>(sampleTransmissions);
+  const [mode, setMode] = useState<EditorMode>("strips");
+  const [scriptText, setScriptText] = useState("");
+  const [scriptNote, setScriptNote] = useState("");
+  const [focusId, setFocusId] = useState<string | null>(null);
 
-const allVoices = [...localVoices, ...azureVoices];
-
-const accentOptions: { value: AccentProfile; label: string }[] = [
-  { value: "native", label: "Voice native accent" },
-  { value: "american", label: "American" },
-  { value: "british", label: "British" },
-  { value: "scottish", label: "Scottish" },
-  { value: "caribbean", label: "Caribbean" },
-  { value: "new-york", label: "New York" },
-  { value: "northern", label: "Northern England" },
-  { value: "west-midlands", label: "West Midlands" },
-  { value: "rp", label: "Received Pronunciation" }
-];
-
-const sampleScript = `ATC: Balkan one two three, Sofia Tower, wind two eight zero degrees, six knots, runway two seven, cleared for takeoff.
-
-PILOT: Cleared for takeoff runway two seven, Balkan one two three.
-
-ATC: Balkan one two three, contact Sofia Departure on one two four decimal six.
-
-PILOT: One two four decimal six, Balkan one two three, good day.`;
-
-const effectCopy: Record<EffectName, string> = {
-  clean: "Unfiltered output.",
-  light: "Light band-pass filter.",
-  vhf: "VHF band-pass and compression.",
-  muffled: "Narrow, low-detail band-pass."
-};
-
-const recordingBedCopy: Record<RecordingBed, string> = {
-  none: "No background noise.",
-  "receiver-hiss": "A quiet, continuous receiver hiss.",
-  "vhf-static": "Steady airband static across voices and reply gaps.",
-  "weak-signal": "Uneven static, light fading and occasional crackle.",
-  "old-recorder": "Low tape noise, hum and small recording pops."
-};
-
-export default function DialogueMaker() {
-  const [script, setScript] = useState(sampleScript);
   const [atcVoiceId, setAtcVoiceId] = useState("bm_george");
   const [pilotVoiceId, setPilotVoiceId] = useState("am_michael");
   const [atcAccent, setAtcAccent] = useState<AccentProfile>("native");
   const [pilotAccent, setPilotAccent] = useState<AccentProfile>("native");
-  const [azureKey, setAzureKey] = useState("");
-  const [azureRegion, setAzureRegion] = useState("northeurope");
-  const [showAzureKey, setShowAzureKey] = useState(false);
   const [atcRate, setAtcRate] = useState(0);
   const [pilotRate, setPilotRate] = useState(0);
   const [pauseMs, setPauseMs] = useState(650);
   const [effect, setEffect] = useState<EffectName>("vhf");
   const [recordingBed, setRecordingBed] = useState<RecordingBed>("none");
+
+  const [azureKey, setAzureKey] = useState("");
+  const [azureRegion, setAzureRegion] = useState("northeurope");
+  const [showAzureKey, setShowAzureKey] = useState(false);
+
   const [status, setStatus] = useState("Ready.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [engineKind, setEngineKind] = useState<"gpu" | "cpu" | null>(null);
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState("");
   const [resultLabel, setResultLabel] = useState("");
-  const previewAudio = useRef<HTMLAudioElement | null>(null);
-  const atcVoice = allVoices.find((voice) => voice.id === atcVoiceId) ?? localVoices[0];
-  const pilotVoice = allVoices.find((voice) => voice.id === pilotVoiceId) ?? localVoices[4];
+  const [hydrated, setHydrated] = useState(false);
 
-  const transmissionCount = useMemo(() => {
-    return script.split(/\r?\n/).filter((line) => /^(atc|controller|tower|ground|approach|departure|pilot|aircraft|flight)\s*:/i.test(line.trim())).length;
-  }, [script]);
+  const previewAudio = useRef<HTMLAudioElement | null>(null);
+  const previewUrl = useRef("");
+
+  const atcVoice = findVoice(atcVoiceId, localVoices[0]);
+  const pilotVoice = findVoice(pilotVoiceId, localVoices[4]);
+  const voiceFor = useCallback(
+    (role: Role) => (role === "atc" ? atcVoice : pilotVoice),
+    [atcVoice, pilotVoice]
+  );
+  const speedFor = useCallback(
+    (role: Role) => rateToSpeed(role === "atc" ? atcRate : pilotRate),
+    [atcRate, pilotRate]
+  );
+
+  const spokenCount = useMemo(
+    () => transmissions.filter((transmission) => transmission.text.trim()).length,
+    [transmissions]
+  );
+  const estimate = useMemo(
+    () => estimateSeconds(transmissions, pauseMs, speedFor),
+    [transmissions, pauseMs, speedFor]
+  );
+  const usesAzure = atcVoice.engine === "azure" || pilotVoice.engine === "azure";
+  const cloudReady = Boolean(azureKey.trim() && azureRegion.trim());
 
   useEffect(() => {
     return () => {
@@ -171,27 +124,65 @@ export default function DialogueMaker() {
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem("atc-dialogue-maker.azure-speech") ?? "null") as { key?: string; region?: string } | null;
+      const saved = JSON.parse(localStorage.getItem(azureKeyName) ?? "null") as { key?: string; region?: string } | null;
       if (saved?.key) setAzureKey(saved.key);
       if (saved?.region) setAzureRegion(saved.region);
       localStorage.removeItem("atc-dialogue-maker.elevenlabs-key");
       localStorage.removeItem("atc-dialogue-maker.elevenlabs-voices");
-      const pair = JSON.parse(localStorage.getItem("atc-dialogue-maker.voice-pair") ?? "null") as { atc?: string; pilot?: string } | null;
-      if (pair?.atc && allVoices.some((voice) => voice.id === pair.atc)) setAtcVoiceId(pair.atc);
-      if (pair?.pilot && allVoices.some((voice) => voice.id === pair.pilot)) setPilotVoiceId(pair.pilot);
+
+      const draft = JSON.parse(localStorage.getItem(draftKey) ?? "null") as SavedDraft | null;
+      if (draft) {
+        if (typeof draft.title === "string") setTitle(draft.title);
+        if (Array.isArray(draft.transmissions) && draft.transmissions.length) {
+          setTransmissions(draft.transmissions
+            .slice(0, maxTransmissions)
+            .map((line) => newTransmission(line.role === "pilot" ? "pilot" : "atc", String(line.text ?? ""))));
+        }
+        if (draft.atcVoiceId && allVoices.some((voice) => voice.id === draft.atcVoiceId)) setAtcVoiceId(draft.atcVoiceId);
+        if (draft.pilotVoiceId && allVoices.some((voice) => voice.id === draft.pilotVoiceId)) setPilotVoiceId(draft.pilotVoiceId);
+        if (draft.atcAccent) setAtcAccent(draft.atcAccent);
+        if (draft.pilotAccent) setPilotAccent(draft.pilotAccent);
+        if (typeof draft.atcRate === "number") setAtcRate(draft.atcRate);
+        if (typeof draft.pilotRate === "number") setPilotRate(draft.pilotRate);
+        if (typeof draft.pauseMs === "number") setPauseMs(draft.pauseMs);
+        if (draft.effect) setEffect(draft.effect);
+        if (draft.recordingBed) setRecordingBed(draft.recordingBed);
+      } else {
+        const pair = JSON.parse(localStorage.getItem(legacyVoicePairKey) ?? "null") as { atc?: string; pilot?: string } | null;
+        if (pair?.atc && allVoices.some((voice) => voice.id === pair.atc)) setAtcVoiceId(pair.atc);
+        if (pair?.pilot && allVoices.some((voice) => voice.id === pair.pilot)) setPilotVoiceId(pair.pilot);
+      }
     } catch {
       // Invalid device-local settings are ignored.
     }
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
-    const unsubscribe = subscribeToEngineStatus(({ message }) => {
+    if (!hydrated) return;
+    const draft: SavedDraft = {
+      title,
+      transmissions: transmissions.map(({ role, text }) => ({ role, text })),
+      atcVoiceId, pilotVoiceId, atcAccent, pilotAccent, atcRate, pilotRate, pauseMs, effect, recordingBed
+    };
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch {
+      // A full or blocked storage quota must never interrupt the work.
+    }
+  }, [hydrated, title, transmissions, atcVoiceId, pilotVoiceId, atcAccent, pilotAccent, atcRate, pilotRate, pauseMs, effect, recordingBed]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToEngineStatus(({ message, engine }) => {
       setStatus(message);
+      if (engine) setEngineKind(engine);
     });
+
     const startWarmup = () => {
       try {
-        const pair = JSON.parse(localStorage.getItem("atc-dialogue-maker.voice-pair") ?? "null") as { atc?: string; pilot?: string } | null;
-        if (pair && ![pair.atc, pair.pilot].some((id) => localVoices.some((voice) => voice.id === id))) return;
+        const draft = JSON.parse(localStorage.getItem(draftKey) ?? "null") as SavedDraft | null;
+        const saved = [draft?.atcVoiceId, draft?.pilotVoiceId].filter(Boolean) as string[];
+        if (saved.length && !saved.some((id) => localVoices.some((voice) => voice.id === id))) return;
       } catch {
         // Warm the default local voices if saved settings cannot be read.
       }
@@ -219,16 +210,93 @@ export default function DialogueMaker() {
     };
   }, []);
 
-  function updateAtcVoice(value: string) {
-    setAtcVoiceId(value);
-    localStorage.setItem("atc-dialogue-maker.voice-pair", JSON.stringify({ atc: value, pilot: pilotVoiceId }));
-    setError("");
+  const handleFocusHandled = useCallback(() => setFocusId(null), []);
+
+  function updateTransmission(id: string, text: string) {
+    setTransmissions((current) => current.map((item) => (item.id === id ? { ...item, text } : item)));
   }
 
-  function updatePilotVoice(value: string) {
-    setPilotVoiceId(value);
-    localStorage.setItem("atc-dialogue-maker.voice-pair", JSON.stringify({ atc: atcVoiceId, pilot: value }));
+  function toggleRole(id: string) {
+    setTransmissions((current) => current.map((item) => (
+      item.id === id ? { ...item, role: oppositeRole(item.role) } : item
+    )));
+  }
+
+  function moveTransmission(id: string, offset: number) {
+    setTransmissions((current) => {
+      const index = current.findIndex((item) => item.id === id);
+      const target = index + offset;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function removeTransmission(id: string) {
+    if (transmissions.length === 1) return;
+    const index = transmissions.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const next = transmissions.filter((item) => item.id !== id);
+    setTransmissions(next);
+    setFocusId(next[Math.max(0, index - 1)]?.id ?? null);
+  }
+
+  function addAfter(id: string) {
+    const index = transmissions.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    if (transmissions.length >= maxTransmissions) {
+      setError(`Keep the exercise to ${maxTransmissions} transmissions or fewer.`);
+      return;
+    }
+    const added = newTransmission(oppositeRole(transmissions[index].role));
+    setTransmissions([...transmissions.slice(0, index + 1), added, ...transmissions.slice(index + 1)]);
+    setFocusId(added.id);
+  }
+
+  function addAtEnd(role: Role) {
+    if (transmissions.length >= maxTransmissions) {
+      setError(`Keep the exercise to ${maxTransmissions} transmissions or fewer.`);
+      return;
+    }
+    const added = newTransmission(role);
+    setTransmissions([...transmissions, added]);
+    setFocusId(added.id);
+  }
+
+  function loadExample() {
+    setTransmissions(sampleTransmissions());
+    setTitle("Sofia Tower · departure");
     setError("");
+    setScriptNote("");
+  }
+
+  function clearAll() {
+    setTransmissions([newTransmission("atc")]);
+    setError("");
+    setScriptNote("");
+  }
+
+  function changeMode(next: EditorMode) {
+    if (next === mode) return;
+    if (next === "text") setScriptText(serializeTransmissions(transmissions));
+    setScriptNote("");
+    setMode(next);
+  }
+
+  function editScriptText(value: string) {
+    setScriptText(value);
+    try {
+      const parsed = parseScriptText(value);
+      if (parsed.length > maxTransmissions) {
+        setScriptNote(`Only the first ${maxTransmissions} transmissions will be kept.`);
+      } else {
+        setScriptNote("");
+      }
+      setTransmissions(parsed.length ? parsed.slice(0, maxTransmissions) : [newTransmission("atc")]);
+    } catch (parseError) {
+      setScriptNote(readableError(parseError));
+    }
   }
 
   function saveCloudSettings() {
@@ -236,77 +304,115 @@ export default function DialogueMaker() {
       setError("Enter both the Azure Speech key and region.");
       return;
     }
-    localStorage.setItem("atc-dialogue-maker.azure-speech", JSON.stringify({ key: azureKey.trim(), region: azureRegion.trim() }));
+    localStorage.setItem(azureKeyName, JSON.stringify({ key: azureKey.trim(), region: azureRegion.trim() }));
     setError("");
     setStatus("Cloud engine settings saved on this device.");
   }
 
   function forgetCloudSettings() {
-    localStorage.removeItem("atc-dialogue-maker.azure-speech");
+    localStorage.removeItem(azureKeyName);
     setAzureKey("");
     setStatus("Saved cloud settings removed.");
   }
 
-  async function synthesizeVoiceLine(text: string, voice: Voice, speed: number, accent: AccentProfile) {
+  function stopPreview() {
+    previewAudio.current?.pause();
+    previewAudio.current = null;
+    if (previewUrl.current) {
+      URL.revokeObjectURL(previewUrl.current);
+      previewUrl.current = "";
+    }
+    setPreviewKey(null);
+  }
+
+  async function synthesize(text: string, voice: Voice, speed: number, accent: AccentProfile) {
     if (voice.engine === "azure") {
       return makeCloudVoicePreview(text, voice.serviceId, speed, azureKey, azureRegion);
     }
     return makeVoicePreview(text, voice.serviceId, speed, accent);
   }
 
-  async function preview(role: Role) {
+  async function runPreview(key: string, text: string, role: Role) {
+    if (previewKey === key) {
+      stopPreview();
+      setStatus("Preview stopped.");
+      return;
+    }
+    stopPreview();
     setBusy(true);
     setError("");
     try {
-      const previewText = role === "atc"
-        ? "Balkan one two three, Sofia Tower, runway two seven, cleared for takeoff."
-        : "Cleared for takeoff runway two seven, Balkan one two three.";
-      const voice = role === "atc" ? atcVoice : pilotVoice;
-      const speed = rateToSpeed(role === "atc" ? atcRate : pilotRate);
-      setStatus(`Generating preview · ${engineName(voice.engine)}`);
-      const generated = await synthesizeVoiceLine(previewText, voice, speed, role === "atc" ? atcAccent : pilotAccent);
+      const voice = voiceFor(role);
+      const accent = role === "atc" ? atcAccent : pilotAccent;
+      setStatus(`Generating preview · ${engineName(voice.engine)} · ${voice.name}`);
+      const generated = await synthesize(text, voice, speedFor(role), accent);
       const filtered = await applyEffect(generated.samples, generated.sampleRate, effect);
-      const withRecordingBed = applyRecordingBed(filtered, generated.sampleRate, recordingBed);
-      const previewBlob = encodeWav(withRecordingBed, generated.sampleRate);
-      if (previewAudio.current) {
-        previewAudio.current.pause();
-        URL.revokeObjectURL(previewAudio.current.src);
-      }
-      previewAudio.current = new Audio(URL.createObjectURL(previewBlob));
-      await previewAudio.current.play();
-      setStatus("Preview playing.");
+      const withBed = applyRecordingBed(filtered, generated.sampleRate, recordingBed);
+      const url = URL.createObjectURL(encodeWav(withBed, generated.sampleRate));
+
+      const audio = new Audio(url);
+      audio.addEventListener("ended", () => {
+        setPreviewKey((current) => (current === key ? null : current));
+        if (previewUrl.current === url) {
+          URL.revokeObjectURL(url);
+          previewUrl.current = "";
+        }
+      });
+      previewAudio.current = audio;
+      previewUrl.current = url;
+      setPreviewKey(key);
+      await audio.play();
+      setStatus("Playing preview.");
     } catch (previewError) {
+      stopPreview();
       setError(readableError(previewError));
-      setStatus("Preview could not be made.");
+      setStatus("The preview could not be made.");
     } finally {
       setBusy(false);
     }
   }
 
+  function previewChannel(role: Role) {
+    const text = role === "atc"
+      ? "Balkan one two three, Sofia Tower, runway two seven, cleared for takeoff."
+      : "Cleared for takeoff runway two seven, Balkan one two three.";
+    void runPreview(`channel:${role}`, text, role);
+  }
+
   async function generateDialogue() {
+    stopPreview();
     setBusy(true);
     setError("");
     try {
-      const dialogue = parseScript(script);
-      if (atcVoice.id === pilotVoice.id) throw new Error("Choose two different voices so the speakers are easy to distinguish.");
+      const dialogue = transmissions.filter((transmission) => transmission.text.trim());
+      if (!dialogue.length) throw new Error("Write at least one transmission before building the recording.");
+      if (dialogue.length > maxTransmissions) throw new Error(`Keep the exercise to ${maxTransmissions} transmissions or fewer.`);
+      const characters = dialogue.reduce((total, transmission) => total + transmission.text.length, 0);
+      if (characters > maxCharacters) throw new Error(`Keep the exercise under ${maxCharacters.toLocaleString("en-GB")} characters.`);
 
-      const requests = dialogue.map((line) => ({
-        text: line.text,
-        voice: line.role === "atc" ? atcVoice : pilotVoice,
-        speed: rateToSpeed(line.role === "atc" ? atcRate : pilotRate),
-        accent: line.role === "atc" ? atcAccent : pilotAccent
+      const roles = new Set(dialogue.map((transmission) => transmission.role));
+      if (roles.size > 1 && atcVoice.id === pilotVoice.id) {
+        throw new Error("Choose two different voices so the controller and the pilot can be told apart.");
+      }
+
+      const requests = dialogue.map((transmission) => ({
+        text: transmission.text.trim(),
+        voice: voiceFor(transmission.role),
+        speed: speedFor(transmission.role),
+        accent: transmission.role === "atc" ? atcAccent : pilotAccent
       }));
       const engines = new Set(requests.map(({ voice }) => voice.engine));
-      if (engines.has("azure") && (!azureKey.trim() || !azureRegion.trim())) {
-        throw new Error("Add the Azure Speech key and region under Voice service settings first.");
+      if (engines.has("azure") && !cloudReady) {
+        throw new Error("Add the Azure Speech key and region under Cloud engine first.");
       }
+
       let generated: { samples: Float32Array; sampleRate: number };
-      if (engines.size === 1 && atcVoice.engine === "local") {
+      if (engines.size === 1 && engines.has("local")) {
         generated = await makeDialogueAudio(
           requests.map(({ text, voice, speed, accent }) => ({ text, voice: voice.serviceId, speed, accent })),
           pauseMs
         );
-      } else if (engines.size === 1 && atcVoice.engine === "azure") {
+      } else if (engines.size === 1 && engines.has("azure")) {
         setStatus("Generating dialogue · Azure");
         generated = await makeCloudDialogueAudio(
           requests.map(({ text, voice, speed }) => ({ text, voice: voice.serviceId, speed })),
@@ -316,396 +422,287 @@ export default function DialogueMaker() {
         );
       } else {
         const clips: { samples: Float32Array; sampleRate: number }[] = [];
-        for (let index = 0; index < requests.length; index += 1) {
-          const request = requests[index];
+        for (const [index, request] of requests.entries()) {
           setStatus(`Generating transmission ${index + 1} of ${requests.length} · ${engineName(request.voice.engine)}`);
-          clips.push(await synthesizeVoiceLine(request.text, request.voice, request.speed, request.accent));
+          clips.push(await synthesize(request.text, request.voice, request.speed, request.accent));
         }
         generated = joinAudioClips(clips, pauseMs);
       }
 
-      setStatus("Applying radio effect…");
+      setStatus("Applying the radio effect…");
       const filtered = await applyEffect(generated.samples, generated.sampleRate, effect);
       const mp3Blob = await makeMp3(filtered, generated.sampleRate, recordingBed);
       const nextUrl = URL.createObjectURL(mp3Blob);
       if (resultUrl) URL.revokeObjectURL(resultUrl);
       setResultUrl(nextUrl);
-      const bedLabel = recordingBed === "none" ? "" : ` · ${recordingBedLabel(recordingBed)}`;
-      const engineLabel = engines.size > 1 ? "Mixed voices" : engineName(atcVoice.engine);
-      setResultLabel(`${dialogue.length} transmissions · ${engineLabel} · ${effectLabel(effect)}${bedLabel}`);
-      setStatus("Done.");
+
+      const duration = formatClock(generated.samples.length / generated.sampleRate);
+      const engineLabel = engines.size > 1 ? "Mixed engines" : engineName(requests[0].voice.engine);
+      const bedLabel = recordingBed === "none" ? "" : ` · ${labelOf(bedOptions, recordingBed)}`;
+      setResultLabel(`${dialogue.length} transmissions · ${duration} · ${engineLabel} · ${labelOf(effectOptions, effect)}${bedLabel}`);
+      setStatus("Recording ready.");
     } catch (generationError) {
       setError(readableError(generationError));
-      setStatus("The dialogue was not generated.");
+      setStatus("The recording was not built.");
     } finally {
       setBusy(false);
     }
   }
 
+  const buildShortcut = useRef(() => {});
+  buildShortcut.current = () => {
+    if (!busy) void generateDialogue();
+  };
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        buildShortcut.current();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
-    <main className="maker-shell">
-      <section className="intro-card">
-        <div className="personal-label"><span>ATC / PILOT</span><i aria-hidden="true" /></div>
-        <h1>Dialogue<br />Maker.</h1>
-        <div className="format-list" aria-label="Output format">
-          <span>Script</span>
-          <span>2 voices</span>
-          <span>MP3</span>
-        </div>
-      </section>
-
-      <section className="work-card">
-        <div className="script-title-row">
-          <div>
-            <p className="mini-label">Script</p>
-            <h2>ATC / Pilot</h2>
-          </div>
-          <div className="small-actions">
-            <button type="button" onClick={() => setScript(sampleScript)}>Example</button>
-            <button type="button" onClick={() => setScript("")}>Clear</button>
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <StudioMark className="brand-mark" />
+          <div className="brand-text">
+            <p className="brand-org">BULATSA · Internal training tool</p>
+            <h1>ATC Dialogue Studio</h1>
           </div>
         </div>
-
-        <label className="sr-only" htmlFor="script">ATC and pilot script</label>
-        <textarea id="script" value={script} onChange={(event) => setScript(event.target.value)} spellCheck placeholder={"ATC: Controller transmission\n\nPILOT: Pilot response"} />
-        <div className="under-script">
-          <span><b>ATC:</b> / <b>PILOT:</b></span>
-          <strong>{transmissionCount} transmission{transmissionCount === 1 ? "" : "s"}</strong>
+        <div className="topbar-chips">
+          <span className={`chip${engineKind ? " chip-live" : ""}`}>
+            <i aria-hidden="true" />
+            Local engine
+            <b>{engineKind === "gpu" ? "GPU" : engineKind === "cpu" ? "CPU" : "Standby"}</b>
+          </span>
+          <span className={`chip${cloudReady ? " chip-live" : usesAzure ? " chip-warn" : ""}`}>
+            <i aria-hidden="true" />
+            Cloud voices
+            <b>{cloudReady ? "Linked" : "Key needed"}</b>
+          </span>
         </div>
+      </header>
 
-        <div className="status-line" aria-live="polite">
-          <span className={busy ? "pulse" : ""} aria-hidden="true" />
-          <p className={error ? "error" : ""}>{error || status}</p>
-        </div>
-
-        <button className="make-button" type="button" disabled={busy} onClick={generateDialogue}>
-          <span>{busy ? "Generating…" : "Generate MP3"}</span>
-          <small>MP3</small>
-        </button>
-
-        {resultUrl && (
-          <div className="result-box">
-            <div><b>Ready</b><span>{resultLabel}</span></div>
-            <audio controls src={resultUrl} />
-            <a href={resultUrl} download="atc-dialogue.mp3">Save MP3</a>
-          </div>
-        )}
-      </section>
-
-      <aside className="choices-card">
-        <div className="choices-heading">
-          <p className="mini-label">Audio</p>
-          <h2>Voices &amp; effect</h2>
-        </div>
-
-        <div className="field-block compact-field voice-library-note">
-          <label>Voice library</label>
-          <p>Local and Azure voices are together below. Choose any voice for each speaker.</p>
-        </div>
-
-        <div className="service-settings">
-          <details>
-            <summary><span>Azure Speech</span><b>{azureKey ? "Ready" : "Key needed"}</b></summary>
-            <div className="cloud-settings">
-            <div className="cloud-input">
-              <label htmlFor="azure-key">Azure Speech key</label>
-              <div className="key-input-row">
-                <input
-                  id="azure-key"
-                  type={showAzureKey ? "text" : "password"}
-                  value={azureKey}
-                  onChange={(event) => setAzureKey(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="Speech resource key"
-                />
-                <button type="button" onClick={() => setShowAzureKey((visible) => !visible)}>{showAzureKey ? "Hide" : "Show"}</button>
-              </div>
-            </div>
-            <div className="cloud-input">
-              <label htmlFor="azure-region">Azure region</label>
+      <main className="workspace">
+        <section className="panel dialogue-panel">
+          <div className="panel-head">
+            <div className="exercise-title">
+              <label htmlFor="exercise-title">Exercise</label>
               <input
-                id="azure-region"
+                id="exercise-title"
                 type="text"
-                value={azureRegion}
-                onChange={(event) => setAzureRegion(event.target.value)}
-                autoCapitalize="none"
-                spellCheck={false}
-                placeholder="northeurope"
+                value={title}
+                maxLength={80}
+                placeholder="Untitled exercise"
+                onChange={(event) => setTitle(event.target.value)}
               />
             </div>
-            <div className="settings-actions">
-              <button type="button" onClick={saveCloudSettings}>Save on this device</button>
-              {azureKey && <button type="button" className="quiet" onClick={forgetCloudSettings}>Forget</button>}
+            <div className="panel-tools">
+              <div className="mode-switch" role="tablist" aria-label="Editor mode">
+                <button type="button" role="tab" aria-selected={mode === "strips"} className={mode === "strips" ? "is-active" : ""} onClick={() => changeMode("strips")}>Strips</button>
+                <button type="button" role="tab" aria-selected={mode === "text"} className={mode === "text" ? "is-active" : ""} onClick={() => changeMode("text")}>Script text</button>
+              </div>
+              <button type="button" className="ghost-button" onClick={loadExample}>Example</button>
+              <button type="button" className="ghost-button" onClick={clearAll}>Clear</button>
             </div>
-            <p>Stored only in this browser and sent directly to Microsoft Speech.</p>
+          </div>
+
+          {mode === "strips" ? (
+            <>
+              <div className="strip-list">
+                {transmissions.map((transmission, index) => (
+                  <TransmissionStrip
+                    key={transmission.id}
+                    transmission={transmission}
+                    index={index}
+                    total={transmissions.length}
+                    voice={voiceFor(transmission.role)}
+                    disabled={busy}
+                    previewing={previewKey === `strip:${transmission.id}`}
+                    focused={focusId === transmission.id}
+                    onText={(text) => updateTransmission(transmission.id, text)}
+                    onToggleRole={() => toggleRole(transmission.id)}
+                    onPreview={() => void runPreview(`strip:${transmission.id}`, transmission.text.trim(), transmission.role)}
+                    onMove={(offset) => moveTransmission(transmission.id, offset)}
+                    onRemove={() => removeTransmission(transmission.id)}
+                    onAddAfter={() => addAfter(transmission.id)}
+                    onFocusHandled={handleFocusHandled}
+                  />
+                ))}
+              </div>
+              <div className="strip-add">
+                <button type="button" className="add-button add-atc" onClick={() => addAtEnd("atc")}>
+                  <PlusIcon /> Controller
+                </button>
+                <button type="button" className="add-button add-pilot" onClick={() => addAtEnd("pilot")}>
+                  <PlusIcon /> Pilot
+                </button>
+                <p className="hint">
+                  <kbd>Enter</kbd> adds the reply · <kbd>Shift</kbd>+<kbd>Enter</kbd> new line · <kbd>Alt</kbd>+<kbd>↑</kbd><kbd>↓</kbd> reorder
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="script-mode">
+              <textarea
+                className="script-text"
+                value={scriptText}
+                spellCheck
+                aria-label="Dialogue script"
+                placeholder={"ATC: Controller transmission\n\nPILOT: Pilot response"}
+                onChange={(event) => editScriptText(event.target.value)}
+              />
+              <p className={`script-note${scriptNote ? " is-warning" : ""}`}>
+                {scriptNote || "Start each transmission with ATC: or PILOT:. CONTROLLER, TOWER, GROUND, APPROACH and DEPARTURE also count as the controller; AIRCRAFT and FLIGHT count as the pilot."}
+              </p>
             </div>
-          </details>
+          )}
+        </section>
 
+        <aside className="rail">
+          <section className="panel rail-panel">
+            <h2 className="rail-title">Voice channels</h2>
+            <VoiceChannel
+              role="atc"
+              voice={atcVoice}
+              voices={allVoices}
+              accent={atcAccent}
+              rate={atcRate}
+              disabled={busy}
+              previewing={previewKey === "channel:atc"}
+              onVoice={(id) => { setAtcVoiceId(id); setError(""); }}
+              onAccent={setAtcAccent}
+              onRate={setAtcRate}
+              onPreview={() => previewChannel("atc")}
+            />
+            <VoiceChannel
+              role="pilot"
+              voice={pilotVoice}
+              voices={allVoices}
+              accent={pilotAccent}
+              rate={pilotRate}
+              disabled={busy}
+              previewing={previewKey === "channel:pilot"}
+              onVoice={(id) => { setPilotVoiceId(id); setError(""); }}
+              onAccent={setPilotAccent}
+              onRate={setPilotRate}
+              onPreview={() => previewChannel("pilot")}
+            />
+          </section>
+
+          <section className="panel rail-panel">
+            <h2 className="rail-title">Radio character</h2>
+            <div className="rail-field">
+              <label htmlFor="effect">Transmission filter</label>
+              <select id="effect" value={effect} onChange={(event) => setEffect(event.target.value as EffectName)} disabled={busy}>
+                {effectOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <p>{detailOf(effectOptions, effect)}</p>
+            </div>
+            <div className="rail-field">
+              <label htmlFor="recording-bed">Background sound</label>
+              <select id="recording-bed" value={recordingBed} onChange={(event) => setRecordingBed(event.target.value as RecordingBed)} disabled={busy}>
+                {bedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <p>{detailOf(bedOptions, recordingBed)}</p>
+            </div>
+            <div className="rail-field">
+              <label htmlFor="pause">Gap between transmissions</label>
+              <select id="pause" value={pauseMs} onChange={(event) => setPauseMs(Number(event.target.value))} disabled={busy}>
+                {gapOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </div>
+          </section>
+
+          <section className="panel rail-panel">
+            <h2 className="rail-title">Cloud engine</h2>
+            <details className="cloud" open={usesAzure && !cloudReady}>
+              <summary>
+                <span>Azure Speech</span>
+                <b className={cloudReady ? "ok" : "todo"}>{cloudReady ? "Linked" : "Key needed"}</b>
+              </summary>
+              <div className="cloud-body">
+                <div className="rail-field">
+                  <label htmlFor="azure-key">Speech resource key</label>
+                  <div className="key-row">
+                    <input
+                      id="azure-key"
+                      type={showAzureKey ? "text" : "password"}
+                      value={azureKey}
+                      onChange={(event) => setAzureKey(event.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="Paste the key"
+                    />
+                    <button type="button" className="ghost-button" onClick={() => setShowAzureKey((visible) => !visible)}>
+                      {showAzureKey ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+                <div className="rail-field">
+                  <label htmlFor="azure-region">Region</label>
+                  <input
+                    id="azure-region"
+                    type="text"
+                    value={azureRegion}
+                    onChange={(event) => setAzureRegion(event.target.value)}
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder="northeurope"
+                  />
+                </div>
+                <div className="cloud-actions">
+                  <button type="button" className="ghost-button strong" onClick={saveCloudSettings}>Save on this device</button>
+                  {azureKey && <button type="button" className="ghost-button" onClick={forgetCloudSettings}>Forget</button>}
+                </div>
+                <p className="fine-print">Stored only in this browser and sent directly to Microsoft Speech. Local voices need no key.</p>
+              </div>
+            </details>
+          </section>
+        </aside>
+      </main>
+
+      <footer className="output-bar">
+        <div className="output-status" aria-live="polite">
+          <span className={`state-dot${busy ? " is-busy" : ""}${error ? " is-error" : ""}`} aria-hidden="true" />
+          <p className={error ? "is-error" : ""}>{error || status}</p>
         </div>
 
-        <VoiceChoice
-          number="1"
-          role="Controller"
-          color="blue"
-          value={atcVoice.id}
-          voices={allVoices}
-          showAccent={atcVoice.engine === "local"}
-          accent={atcAccent}
-          rate={atcRate}
-          disabled={busy}
-          onVoice={updateAtcVoice}
-          onAccent={setAtcAccent}
-          onRate={setAtcRate}
-          onPreview={() => preview("atc")}
-        />
-        <VoiceChoice
-          number="2"
-          role="Pilot"
-          color="orange"
-          value={pilotVoice.id}
-          voices={allVoices}
-          showAccent={pilotVoice.engine === "local"}
-          accent={pilotAccent}
-          rate={pilotRate}
-          disabled={busy}
-          onVoice={updatePilotVoice}
-          onAccent={setPilotAccent}
-          onRate={setPilotRate}
-          onPreview={() => preview("pilot")}
-        />
-
-        <div className="field-block compact-field">
-          <label htmlFor="pause">Reply gap</label>
-          <select id="pause" value={pauseMs} onChange={(event) => setPauseMs(Number(event.target.value))}>
-            <option value={350}>Quick · 0.35 seconds</option>
-            <option value={650}>Natural · 0.65 seconds</option>
-            <option value={1000}>Measured · 1 second</option>
-            <option value={1500}>Long · 1.5 seconds</option>
-          </select>
+        <div className="output-meta">
+          <span><b>{spokenCount}</b> transmission{spokenCount === 1 ? "" : "s"}</span>
+          <span>≈ <b>{formatClock(estimate)}</b></span>
+          <span>{labelOf(effectOptions, effect)}</span>
         </div>
 
-        <div className="field-block compact-field">
-          <label htmlFor="effect">Radio effect</label>
-          <select id="effect" value={effect} onChange={(event) => setEffect(event.target.value as EffectName)}>
-            <option value="clean">Clean voice</option>
-            <option value="light">Light radio</option>
-            <option value="vhf">VHF radio</option>
-            <option value="muffled">Muffled recording</option>
-          </select>
-          <p>{effectCopy[effect]}</p>
-        </div>
+        {resultUrl && (
+          <div className="output-result">
+            <audio controls src={resultUrl} aria-label="Generated dialogue" />
+            <a className="save-link" href={resultUrl} download={`${fileSlug(title)}.mp3`}>
+              <DownloadIcon /> Save MP3
+            </a>
+            <span className="result-label">{resultLabel}</span>
+          </div>
+        )}
 
-        <div className="field-block compact-field last-field">
-          <label htmlFor="recording-bed">Recording sound</label>
-          <select id="recording-bed" value={recordingBed} onChange={(event) => setRecordingBed(event.target.value as RecordingBed)}>
-            <option value="none">None</option>
-            <option value="receiver-hiss">Light receiver hiss</option>
-            <option value="vhf-static">VHF static bed</option>
-            <option value="weak-signal">Weak signal</option>
-            <option value="old-recorder">Old recorder</option>
-          </select>
-          <p>{recordingBedCopy[recordingBed]}</p>
-        </div>
-      </aside>
-
-      <p className="local-note">Local &amp; Azure voices · mix any two</p>
-    </main>
-  );
-}
-
-function VoiceChoice({ number, role, color, value, voices, showAccent, accent, rate, disabled, onVoice, onAccent, onRate, onPreview }: {
-  number: string;
-  role: string;
-  color: "blue" | "orange";
-  value: string;
-  voices: Voice[];
-  showAccent: boolean;
-  accent: AccentProfile;
-  rate: number;
-  disabled: boolean;
-  onVoice: (value: string) => void;
-  onAccent: (value: AccentProfile) => void;
-  onRate: (value: number) => void;
-  onPreview: () => void;
-}) {
-  const voiceGroups = Array.from(new Set(voices.map(voiceGroupLabel)));
-  return (
-    <div className="voice-choice">
-      <div className="role-heading">
-        <span className={color}>{number}</span>
-        <div><b>{role}</b></div>
-      </div>
-      <div className="voice-select-row">
-        <label className="sr-only" htmlFor={`${role}-voice`}>{role} voice</label>
-        <select id={`${role}-voice`} value={value} onChange={(event) => onVoice(event.target.value)}>
-          {voiceGroups.map((group) => (
-            <optgroup key={group} label={group}>
-              {voices.filter((voice) => voiceGroupLabel(voice) === group).map((voice) => (
-                <option key={voice.id} value={voice.id}>{voice.name} · {voice.gender}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-        <button type="button" disabled={disabled} onClick={onPreview} aria-label={`Preview ${role.toLowerCase()} voice`}>▶</button>
-      </div>
-      {showAccent && (
-        <div className="accent-select-row">
-          <label htmlFor={`${role}-accent`}>English accent</label>
-          <select id={`${role}-accent`} value={accent} onChange={(event) => onAccent(event.target.value as AccentProfile)}>
-            {accentOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </div>
-      )}
-      <label className="rate-label" htmlFor={`${role}-rate`}><span>Rate</span><b>{rate > 0 ? "+" : ""}{rate}%</b></label>
-      <input id={`${role}-rate`} type="range" min="-30" max="30" step="5" value={rate} onChange={(event) => onRate(Number(event.target.value))} />
+        <button type="button" className="build-button" disabled={busy} onClick={generateDialogue}>
+          {busy ? "Working…" : "Build recording"}
+          <small>MP3</small>
+        </button>
+      </footer>
     </div>
   );
 }
 
-function parseScript(input: string): DialogueLine[] {
-  if (!input.trim()) throw new Error("Paste a dialogue script first.");
-  if (input.length > 12_000) throw new Error("Keep the script under 12,000 characters.");
-
-  const aliases: Record<string, Role> = {
-    atc: "atc", controller: "atc", tower: "atc", ground: "atc", approach: "atc", departure: "atc",
-    pilot: "pilot", aircraft: "pilot", flight: "pilot"
-  };
-  const dialogue: DialogueLine[] = [];
-  for (const [index, sourceLine] of input.replace(/\r\n/g, "\n").split("\n").entries()) {
-    const line = sourceLine.trim();
-    if (!line) continue;
-    const match = line.match(/^([^:]{1,24}):\s*(.+)$/);
-    if (match) {
-      const role = aliases[match[1].trim().toLowerCase()];
-      if (!role) throw new Error(`Unknown speaker “${match[1].trim()}” on line ${index + 1}. Use ATC: or PILOT:.`);
-      dialogue.push({ role, text: match[2].trim() });
-    } else if (dialogue.length) {
-      dialogue[dialogue.length - 1].text += ` ${line}`;
-    } else {
-      throw new Error(`Line ${index + 1} needs ATC: or PILOT: at the start.`);
-    }
-  }
-  if (dialogue.length < 2) throw new Error("Add at least two transmissions.");
-  if (dialogue.length > 40) throw new Error("Keep the dialogue to 40 transmissions or fewer.");
-  if (!dialogue.some((line) => line.role === "atc") || !dialogue.some((line) => line.role === "pilot")) {
-    throw new Error("The script needs both an ATC: line and a PILOT: line.");
-  }
-  return dialogue;
+function labelOf<T extends string | number>(options: { value: T; label: string }[], value: T) {
+  return options.find((option) => option.value === value)?.label ?? String(value);
 }
 
-function rateToSpeed(rate: number) {
-  return Math.max(0.7, Math.min(1.3, 1 + rate / 100));
-}
-
-function engineName(engine: VoiceEngine) {
-  return { local: "Local", azure: "Azure" }[engine];
-}
-
-function voiceGroupLabel(voice: Voice) {
-  return `${engineName(voice.engine)} · ${voice.accent}`;
-}
-
-function joinAudioClips(clips: { samples: Float32Array; sampleRate: number }[], pauseMs: number) {
-  const sampleRate = 24_000;
-  const normalized = clips.map((clip) => resampleAudio(clip.samples, clip.sampleRate, sampleRate));
-  const gapLength = Math.round(sampleRate * Math.max(0, pauseMs) / 1000);
-  const totalLength = normalized.reduce((total, samples) => total + samples.length, 0) + gapLength * Math.max(0, normalized.length - 1);
-  const joined = new Float32Array(totalLength);
-  let offset = 0;
-  normalized.forEach((samples, index) => {
-    joined.set(samples, offset);
-    offset += samples.length;
-    if (index < normalized.length - 1) offset += gapLength;
-  });
-  return { samples: joined, sampleRate };
-}
-
-function resampleAudio(samples: Float32Array, fromRate: number, toRate: number) {
-  if (fromRate === toRate) return samples;
-  const length = Math.max(1, Math.round(samples.length * toRate / fromRate));
-  const output = new Float32Array(length);
-  const ratio = fromRate / toRate;
-  for (let index = 0; index < length; index += 1) {
-    const sourcePosition = index * ratio;
-    const left = Math.min(samples.length - 1, Math.floor(sourcePosition));
-    const right = Math.min(samples.length - 1, left + 1);
-    const fraction = sourcePosition - left;
-    output[index] = samples[left] * (1 - fraction) + samples[right] * fraction;
-  }
-  return output;
-}
-
-async function applyEffect(samples: Float32Array, sampleRate: number, effect: EffectName) {
-  if (effect === "clean") return samples.slice();
-  const context = new OfflineAudioContext(1, samples.length, sampleRate);
-  const buffer = context.createBuffer(1, samples.length, sampleRate);
-  buffer.copyToChannel(Float32Array.from(samples), 0);
-  const source = context.createBufferSource();
-  source.buffer = buffer;
-
-  const highPass = context.createBiquadFilter();
-  highPass.type = "highpass";
-  highPass.frequency.value = effect === "light" ? 180 : effect === "vhf" ? 300 : 350;
-  const lowPass = context.createBiquadFilter();
-  lowPass.type = "lowpass";
-  lowPass.frequency.value = effect === "light" ? 4200 : effect === "vhf" ? 3400 : 2300;
-  const compressor = context.createDynamicsCompressor();
-  compressor.threshold.value = effect === "light" ? -18 : effect === "vhf" ? -20 : -22;
-  compressor.ratio.value = effect === "light" ? 2.5 : effect === "vhf" ? 3.5 : 4.5;
-  compressor.attack.value = 0.005;
-  compressor.release.value = 0.08;
-  const gain = context.createGain();
-  gain.gain.value = effect === "light" ? 1.05 : effect === "vhf" ? 1.1 : 1.15;
-
-  source.connect(highPass).connect(lowPass).connect(compressor).connect(gain).connect(context.destination);
-  source.start();
-  const rendered = await context.startRendering();
-  return rendered.getChannelData(0).slice();
-}
-
-function encodeWav(samples: Float32Array, sampleRate: number) {
-  const buffer = new ArrayBuffer(44 + samples.length * 2);
-  const view = new DataView(buffer);
-  writeText(view, 0, "RIFF");
-  view.setUint32(4, 36 + samples.length * 2, true);
-  writeText(view, 8, "WAVE");
-  writeText(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeText(view, 36, "data");
-  view.setUint32(40, samples.length * 2, true);
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, samples[index]));
-    view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-  }
-  return new Blob([buffer], { type: "audio/wav" });
-}
-
-function writeText(view: DataView, offset: number, text: string) {
-  for (let index = 0; index < text.length; index += 1) view.setUint8(offset + index, text.charCodeAt(index));
-}
-
-function effectLabel(effect: EffectName) {
-  return { clean: "Clean voice", light: "Light radio", vhf: "VHF radio", muffled: "Muffled recording" }[effect];
-}
-
-function recordingBedLabel(bed: RecordingBed) {
-  return {
-    none: "No recording bed",
-    "receiver-hiss": "Receiver hiss",
-    "vhf-static": "VHF static bed",
-    "weak-signal": "Weak signal",
-    "old-recorder": "Old recorder"
-  }[bed];
-}
-
-function readableError(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  return "Something went wrong while making the audio. Please try again.";
+function detailOf<T extends string>(options: { value: T; detail: string }[], value: T) {
+  return options.find((option) => option.value === value)?.detail ?? "";
 }

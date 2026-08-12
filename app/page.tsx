@@ -344,33 +344,56 @@ export default function DialogueMaker() {
 
   return (
     <main className="maker-shell">
-      <section className="intro-card">
-        <div className="personal-label"><span>ATC / PILOT</span><i aria-hidden="true" /></div>
-        <h1>Dialogue<br />Maker.</h1>
-        <div className="format-list" aria-label="Output format">
-          <span>Script</span>
-          <span>2 voices</span>
-          <span>MP3</span>
+      <header className="topbar">
+        <div className="brand-lockup" aria-label="BULATSA, РВД България">
+          <div className="brand-symbol" aria-hidden="true"><span /><span /><span /></div>
+          <div className="brand-name"><strong>BULATSA</strong><span>РВД БЪЛГАРИЯ</span></div>
         </div>
+        <div className="workspace-name">
+          <b>ATC DIALOGUE WORKSPACE</b>
+          <span>VOICE SYNTHESIS / AUDIO EXPORT</span>
+        </div>
+        <div className="system-state"><i className={busy ? "pulse" : ""} aria-hidden="true" /><span>{busy ? "PROCESSING" : "SYSTEM READY"}</span></div>
+      </header>
+
+      <section className="intro-card">
+        <div className="panel-code"><span>VOICE / 01</span><b>TRAINING AUDIO</b></div>
+        <div className="radar-scope" aria-hidden="true">
+          <span className="radar-axis radar-axis-x" />
+          <span className="radar-axis radar-axis-y" />
+          <span className="radar-ring radar-ring-a" />
+          <span className="radar-ring radar-ring-b" />
+          <span className="radar-sweep" />
+          <i className="target target-a" /><i className="target target-b" /><i className="target target-c" />
+        </div>
+        <p className="eyebrow">РВД БЪЛГАРИЯ</p>
+        <h1>ATC Dialogue<br /><span>Studio</span></h1>
+        <p className="intro-copy">Two-channel speech synthesis with configurable radio character.</p>
+        <div className="format-list" aria-label="Output format">
+          <span>2 CHANNELS</span>
+          <span>VHF FX</span>
+          <span>MP3 OUT</span>
+        </div>
+        <div className="flag-line" aria-hidden="true"><i /><i /><i /></div>
       </section>
 
       <section className="work-card">
         <div className="script-title-row">
           <div>
-            <p className="mini-label">Script</p>
-            <h2>ATC / Pilot</h2>
+            <p className="mini-label">01 / SCRIPT INPUT</p>
+            <h2>Transmission sequence</h2>
           </div>
           <div className="small-actions">
-            <button type="button" onClick={() => setScript(sampleScript)}>Example</button>
-            <button type="button" onClick={() => setScript("")}>Clear</button>
+            <button type="button" onClick={() => setScript(sampleScript)}>LOAD SAMPLE</button>
+            <button type="button" onClick={() => setScript("")}>CLEAR</button>
           </div>
         </div>
 
         <label className="sr-only" htmlFor="script">ATC and pilot script</label>
         <textarea id="script" value={script} onChange={(event) => setScript(event.target.value)} spellCheck placeholder={"ATC: Controller transmission\n\nPILOT: Pilot response"} />
         <div className="under-script">
-          <span><b>ATC:</b> / <b>PILOT:</b></span>
-          <strong>{transmissionCount} transmission{transmissionCount === 1 ? "" : "s"}</strong>
+          <span>FORMAT <b>ATC:</b> / <b>PILOT:</b></span>
+          <strong>{String(transmissionCount).padStart(2, "0")} TRANSMISSION{transmissionCount === 1 ? "" : "S"}</strong>
         </div>
 
         <div className="status-line" aria-live="polite">
@@ -379,36 +402,36 @@ export default function DialogueMaker() {
         </div>
 
         <button className="make-button" type="button" disabled={busy} onClick={generateDialogue}>
-          <span>{busy ? "Generating…" : "Generate MP3"}</span>
-          <small>MP3</small>
+          <span>{busy ? "GENERATING AUDIO…" : "GENERATE DIALOGUE"}</span>
+          <small>MP3 / EXPORT</small>
         </button>
 
         {resultUrl && (
           <div className="result-box">
-            <div><b>Ready</b><span>{resultLabel}</span></div>
+            <div><b>RECORDING READY</b><span>{resultLabel}</span></div>
             <audio controls src={resultUrl} />
-            <a href={resultUrl} download="atc-dialogue.mp3">Save MP3</a>
+            <a href={resultUrl} download="atc-dialogue.mp3">SAVE MP3</a>
           </div>
         )}
       </section>
 
       <aside className="choices-card">
         <div className="choices-heading">
-          <p className="mini-label">Audio</p>
-          <h2>Voices &amp; effect</h2>
+          <p className="mini-label">02 / AUDIO CONFIG</p>
+          <h2>Channels &amp; signal</h2>
         </div>
 
         <div className="field-block compact-field voice-library-note">
-          <label>Voice library</label>
-          <p>Local and Azure voices are together below. Choose any voice for each speaker.</p>
+          <label>VOICE SOURCES</label>
+          <p>Local and Azure voices are available in both channels.</p>
         </div>
 
         <div className="service-settings">
           <details>
-            <summary><span>Azure Speech</span><b>{azureKey ? "Ready" : "Key needed"}</b></summary>
+            <summary><span>AZURE SPEECH</span><b>{azureKey ? "CONNECTED" : "KEY NEEDED"}</b></summary>
             <div className="cloud-settings">
             <div className="cloud-input">
-              <label htmlFor="azure-key">Azure Speech key</label>
+              <label htmlFor="azure-key">SPEECH RESOURCE KEY</label>
               <div className="key-input-row">
                 <input
                   id="azure-key"
@@ -423,7 +446,7 @@ export default function DialogueMaker() {
               </div>
             </div>
             <div className="cloud-input">
-              <label htmlFor="azure-region">Azure region</label>
+              <label htmlFor="azure-region">AZURE REGION</label>
               <input
                 id="azure-region"
                 type="text"
@@ -435,8 +458,8 @@ export default function DialogueMaker() {
               />
             </div>
             <div className="settings-actions">
-              <button type="button" onClick={saveCloudSettings}>Save on this device</button>
-              {azureKey && <button type="button" className="quiet" onClick={forgetCloudSettings}>Forget</button>}
+              <button type="button" onClick={saveCloudSettings}>SAVE LOCALLY</button>
+              {azureKey && <button type="button" className="quiet" onClick={forgetCloudSettings}>REMOVE</button>}
             </div>
             <p>Stored only in this browser and sent directly to Microsoft Speech.</p>
             </div>
@@ -476,7 +499,7 @@ export default function DialogueMaker() {
         />
 
         <div className="field-block compact-field">
-          <label htmlFor="pause">Reply gap</label>
+          <label htmlFor="pause">REPLY GAP</label>
           <select id="pause" value={pauseMs} onChange={(event) => setPauseMs(Number(event.target.value))}>
             <option value={350}>Quick · 0.35 seconds</option>
             <option value={650}>Natural · 0.65 seconds</option>
@@ -486,7 +509,7 @@ export default function DialogueMaker() {
         </div>
 
         <div className="field-block compact-field">
-          <label htmlFor="effect">Radio effect</label>
+          <label htmlFor="effect">TRANSMISSION FILTER</label>
           <select id="effect" value={effect} onChange={(event) => setEffect(event.target.value as EffectName)}>
             <option value="clean">Clean voice</option>
             <option value="light">Light radio</option>
@@ -497,7 +520,7 @@ export default function DialogueMaker() {
         </div>
 
         <div className="field-block compact-field last-field">
-          <label htmlFor="recording-bed">Recording sound</label>
+          <label htmlFor="recording-bed">RECEIVER BED</label>
           <select id="recording-bed" value={recordingBed} onChange={(event) => setRecordingBed(event.target.value as RecordingBed)}>
             <option value="none">None</option>
             <option value="receiver-hiss">Light receiver hiss</option>
@@ -509,7 +532,7 @@ export default function DialogueMaker() {
         </div>
       </aside>
 
-      <p className="local-note">Local &amp; Azure voices · mix any two</p>
+      <footer className="local-note"><span>BULATSA / РВД БЪЛГАРИЯ</span><b>AUDIO PREPARATION WORKSPACE · NOT FOR OPERATIONAL TRANSMISSION</b></footer>
     </main>
   );
 }
@@ -530,11 +553,13 @@ function VoiceChoice({ number, role, color, value, voices, showAccent, accent, r
   onPreview: () => void;
 }) {
   const voiceGroups = Array.from(new Set(voices.map(voiceGroupLabel)));
+  const selectedVoice = voices.find((voice) => voice.id === value);
   return (
     <div className="voice-choice">
       <div className="role-heading">
         <span className={color}>{number}</span>
-        <div><b>{role}</b></div>
+        <div><small>{role === "Controller" ? "ATC CHANNEL" : "AIRCRAFT CHANNEL"}</small><b>{role}</b></div>
+        <em>{selectedVoice ? engineName(selectedVoice.engine) : "VOICE"}</em>
       </div>
       <div className="voice-select-row">
         <label className="sr-only" htmlFor={`${role}-voice`}>{role} voice</label>
@@ -547,7 +572,7 @@ function VoiceChoice({ number, role, color, value, voices, showAccent, accent, r
             </optgroup>
           ))}
         </select>
-        <button type="button" disabled={disabled} onClick={onPreview} aria-label={`Preview ${role.toLowerCase()} voice`}>▶</button>
+        <button type="button" disabled={disabled} onClick={onPreview} aria-label={`Preview ${role.toLowerCase()} voice`}>TEST</button>
       </div>
       {showAccent && (
         <div className="accent-select-row">

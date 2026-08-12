@@ -44,6 +44,13 @@ continue the previous transmission. The two views stay in sync, so either can be
 The exercise name is used for the exported file name, and the current draft is kept in the browser
 so a closed tab does not lose the work.
 
+## Theme
+
+The switch in the top right selects the light theme, the dark theme, or the system setting. The
+choice is remembered per browser, and the stored theme is applied before the first paint so a dark
+session never flashes white. On the system setting the page follows the operating system as it
+changes. Both themes are checked against a 4.5:1 contrast floor for text.
+
 ## Voices and audio
 
 - Each speaker has a voice channel with its own voice, accent and speech rate.

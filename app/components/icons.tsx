@@ -43,6 +43,33 @@ export function DownloadIcon(props: IconProps) {
   );
 }
 
+export function SunIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="8" r="3.1" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.2 1.2M11.4 11.4l1.2 1.2M12.6 3.4l-1.2 1.2M4.6 11.4l-1.2 1.2"
+        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function MoonIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M13.2 9.6A5.7 5.7 0 0 1 6.4 2.8a5.7 5.7 0 1 0 6.8 6.8z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </Icon>
+  );
+}
+
+export function AutoThemeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="8" r="5.6" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor" />
+    </Icon>
+  );
+}
+
 /** House mark: a compass rose with a heading chevron. Drawn for this tool, not an official emblem. */
 export function StudioMark({ className }: IconProps) {
   return (

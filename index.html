@@ -3,6 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Applies the stored theme before first paint. Keep in sync with themeBootScript in src/theme.ts. -->
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem("atc-dialogue-studio.theme") || "system";
+          var d = p === "dark" || (p === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.dataset.theme = d ? "dark" : "light";
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"

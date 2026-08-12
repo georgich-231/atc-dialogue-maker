@@ -37,8 +37,16 @@ import {
   type Transmission,
   type Voice
 } from "../src/dialogue";
+import {
+  applyTheme,
+  readStoredPreference,
+  resolveTheme,
+  themeStorageKey,
+  type ThemePreference
+} from "../src/theme";
 import { TransmissionStrip } from "./components/TransmissionStrip";
 import { VoiceChannel } from "./components/VoiceChannel";
+import { ThemeSwitch } from "./components/ThemeSwitch";
 import { DownloadIcon, PlusIcon, StudioMark } from "./components/icons";
 
 type EditorMode = "strips" | "text";
@@ -90,6 +98,7 @@ export default function DialogueStudio() {
   const [resultUrl, setResultUrl] = useState("");
   const [resultLabel, setResultLabel] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [theme, setTheme] = useState<ThemePreference>("system");
 
   const previewAudio = useRef<HTMLAudioElement | null>(null);
   const previewUrl = useRef("");
@@ -155,8 +164,36 @@ export default function DialogueStudio() {
     } catch {
       // Invalid device-local settings are ignored.
     }
+    setTheme(readStoredPreference());
     setHydrated(true);
   }, []);
+
+  /* The boot script in the page head has already applied the stored theme, so
+     this only has to keep it in step with the switch and the system setting. */
+  useEffect(() => {
+    if (!hydrated) return;
+    applyTheme(resolveTheme(theme));
+    try {
+      localStorage.setItem(themeStorageKey, theme);
+    } catch {
+      // The theme simply will not be remembered on the next visit.
+    }
+    if (theme !== "system" || typeof window.matchMedia !== "function") return;
+
+    /* The media query is the live signal; the visibility check catches a system
+       theme that changed while this tab sat in the background. */
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const followSystem = () => applyTheme(resolveTheme("system"));
+    const resyncWhenVisible = () => {
+      if (document.visibilityState === "visible") followSystem();
+    };
+    query.addEventListener("change", followSystem);
+    document.addEventListener("visibilitychange", resyncWhenVisible);
+    return () => {
+      query.removeEventListener("change", followSystem);
+      document.removeEventListener("visibilitychange", resyncWhenVisible);
+    };
+  }, [hydrated, theme]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -486,6 +523,7 @@ export default function DialogueStudio() {
             Cloud voices
             <b>{cloudReady ? "Linked" : "Key needed"}</b>
           </span>
+          <ThemeSwitch value={theme} onChange={setTheme} />
         </div>
       </header>
 

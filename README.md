@@ -1,4 +1,4 @@
-# BULATSA ATC Dialogue Studio
+# ATC Dialogue Maker
 
 A two-voice ATC dialogue generator with radio effects and MP3 export. It runs directly in the browser.
 

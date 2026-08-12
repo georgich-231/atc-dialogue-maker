@@ -9,17 +9,17 @@ export async function generateMetadata(): Promise<Metadata> {
   const baseUrl = `${protocol}://${host}`;
 
   return {
-    title: "BULATSA ATC Dialogue Studio",
-    description: "BULATSA / РВД България dialogue preparation workspace with two voices, radio effects and MP3 export.",
+    title: "ATC Dialogue Maker",
+    description: "Two-voice ATC dialogue generation with radio effects and MP3 export.",
     openGraph: {
-      title: "BULATSA ATC Dialogue Studio",
-      description: "РВД България · Two-channel voice synthesis and radio audio export.",
+      title: "ATC Dialogue Maker",
+      description: "Two voices. Radio effects. MP3 export.",
       images: [`${baseUrl}/og.png`]
     },
     twitter: {
       card: "summary_large_image",
-      title: "BULATSA ATC Dialogue Studio",
-      description: "РВД България · Two-channel voice synthesis and radio audio export.",
+      title: "ATC Dialogue Maker",
+      description: "Two voices. Radio effects. MP3 export.",
       images: [`${baseUrl}/og.png`]
     }
   };
